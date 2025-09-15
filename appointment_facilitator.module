@@ -1,41 +1,25 @@
 <?php
 
 use Drupal\Core\Entity\EntityInterface;
-
-/**
- * Keep legacy behavior: include author as attendee if none explicitly set.
- * Enforce capacity minimum of 1 if present.
- */
-function appointment_facilitator_entity_presave(EntityInterface $entity) {
-  if ($entity->getEntityTypeId() !== 'node' || $entity->bundle() !== 'appointment') {
-    return;
-  }
-
-  if ($entity->hasField('field_appointment_capacity')) {
-    $cap = (int) ($entity->get('field_appointment_capacity')->value ?? 1);
-    if ($cap <= 0) {
-      $entity->set('field_appointment_capacity', 1);
-    }
-  }
-
-  if ($entity->hasField('field_appointment_attendees') && $entity->get('field_appointment_attendees')->isEmpty()) {
-    $author_id = (int) $entity->getOwnerId();
-    if ($author_id > 0) {
-      $entity->get('field_appointment_attendees')->appendItem($author_id);
-    }
-  }
-}
+use Drupal\node\NodeInterface;
+use Drupal\Core\Url;
+use Drupal\Core\Link;
 
 /**
  * Compute effective capacity for an appointment node.
+ *
+ * Capacity is the minimum of the capacities defined on the appointment's
+ * "badges" (taxonomy terms) and the facilitator's own capacity limit from
+ * their profile.
+ *
+ * @param \Drupal\node\NodeInterface $node
+ *   The appointment node.
+ *
+ * @return int
+ *   The effective capacity, defaulting to 1.
  */
-function appointment_facilitator_effective_capacity(\Drupal\node\NodeInterface $node) {
+function appointment_facilitator_effective_capacity(NodeInterface $node): int {
   $caps = [];
-
-  // Appointment-level capacity.
-  if ($node->hasField('field_appointment_capacity') && !$node->get('field_appointment_capacity')->isEmpty()) {
-    $caps[] = (int) $node->get('field_appointment_capacity')->value;
-  }
 
   // Badge capacities.
   if ($node->hasField('field_appointment_badges') && !$node->get('field_appointment_badges')->isEmpty()) {
@@ -70,42 +54,55 @@ function appointment_facilitator_effective_capacity(\Drupal\node\NodeInterface $
 }
 
 /**
- * Show Join CTA only when effective capacity > 1, unless config forces always-show.
+ * Implements hook_entity_view().
+ *
+ * Adds the capacity information and a "Join" CTA to appointment nodes.
  */
-function appointment_facilitator_entity_view(array &$build, \Drupal\Core\Entity\EntityInterface $entity, $view_mode, $langcode) {
-  if ($entity->getEntityTypeId() !== 'node' || $entity->bundle() !== 'appointment') {
+function appointment_facilitator_entity_view(array &$build, EntityInterface $entity, $view_mode, $langcode) {
+  if ($entity->getEntityTypeId() !== 'node' || $entity->bundle() !== 'appointment' || $view_mode !== 'full') {
     return;
   }
+
   $account = \Drupal::currentUser();
+  $effective_capacity = appointment_facilitator_effective_capacity($entity);
+
+  // Add a capacity summary.
+  $build['appointment_capacity_summary'] = [
+    '#type' => 'container',
+    '#attributes' => ['class' => ['appointment-capacity-summary']],
+    'summary' => ['#markup' => '<div><strong>' . t('Capacity') . ':</strong> ' . $effective_capacity . '</div>'],
+    '#weight' => -60,
+  ];
+
+  // Gate the Join CTA.
   if ($account->isAnonymous()) {
     return;
   }
-  if (!$entity->hasField('field_appointment_capacity') || !$entity->hasField('field_appointment_attendees')) {
+  if (!$entity->hasField('field_appointment_attendees')) {
     return;
   }
 
   $conf = \Drupal::config('appointment_facilitator.settings');
   $show_always = (bool) $conf->get('show_always_join_cta');
 
-  $effective = appointment_facilitator_effective_capacity($entity);
-  if (!$show_always && $effective <= 1) {
+  if (!$show_always && $effective_capacity <= 1) {
     return;
   }
 
-  $cap = max(1, (int) $entity->get('field_appointment_capacity')->value);
   $attendees = $entity->get('field_appointment_attendees')->referencedEntities();
-  $remaining = max(0, $cap - count($attendees));
+  $remaining = max(0, $effective_capacity - count($attendees));
   if ($remaining <= 0) {
     return;
   }
 
-  $url = \Drupal\Core\Url::fromRoute('appointment_facilitator.join', ['node' => $entity->id()]);
-  $link = \Drupal\Core\Link::fromTextAndUrl(t('Join this appointment'), $url)->toString();
+  // Add the Join CTA.
+  $url = Url::fromRoute('appointment_facilitator.join', ['node' => $entity->id()]);
+  $link = Link::fromTextAndUrl(t('Join this appointment'), $url)->toString();
   $build['appointment_join'] = [
     '#type' => 'container',
     '#attributes' => ['class' => ['appointment-join-cta']],
-    'remaining' => ['#markup' => '<div><strong>'.t('Seats left').':</strong> '. (int) $remaining .'</div>'],
-    'cta' => ['#markup' => '<div class="join-btn">'. $link .'</div>'],
+    'remaining' => ['#markup' => '<div><strong>' . t('Seats left') . ':</strong> ' . (int) $remaining . '</div>'],
+    'cta' => ['#markup' => '<div class="join-btn">' . $link . '</div>'],
     '#weight' => -50,
   ];
 }

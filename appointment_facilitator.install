@@ -54,24 +54,6 @@ function appointment_facilitator_ensure_fields(string $badges_vid, ?string $prof
     ])->save();
   }
 
-  if (!FieldStorageConfig::loadByName('node', 'field_appointment_capacity')) {
-    FieldStorageConfig::create([
-      'field_name' => 'field_appointment_capacity',
-      'entity_type' => 'node',
-      'type' => 'integer',
-      'settings' => ['min' => 1],
-      'cardinality' => 1,
-    ])->save();
-  }
-  if (!FieldConfig::loadByName('node', 'appointment', 'field_appointment_capacity')) {
-    FieldConfig::create([
-      'field_name' => 'field_appointment_capacity',
-      'entity_type' => 'node',
-      'bundle' => 'appointment',
-      'label' => 'Capacity',
-    ])->save();
-  }
-
   if (!FieldStorageConfig::loadByName('node', 'field_appointment_attendees')) {
     FieldStorageConfig::create([
       'field_name' => 'field_appointment_attendees',
@@ -149,11 +131,12 @@ function appointment_facilitator_ensure_displays(?string $badges_vid = 'badges',
       $widget = \Drupal::moduleHandler()->moduleExists('smart_date') ? 'smartdate_inline' : 'daterange_default';
       $fd->setComponent('field_appointment_timerange', ['type' => $widget, 'weight' => -10, 'region' => 'content']);
     }
-    if ($fd->getComponent('field_appointment_capacity') === NULL) {
-      $fd->setComponent('field_appointment_capacity', ['type' => 'number', 'weight' => -9, 'region' => 'content']);
-    }
     if ($fd->getComponent('field_appointment_attendees') === NULL) {
       $fd->setComponent('field_appointment_attendees', ['type' => 'entity_reference_autocomplete', 'weight' => -8, 'region' => 'content']);
+    }
+    // Remove the old capacity field if it exists on the display.
+    if ($fd->getComponent('field_appointment_capacity') !== NULL) {
+      $fd->removeComponent('field_appointment_capacity');
     }
     $fd->save();
   }
@@ -164,11 +147,12 @@ function appointment_facilitator_ensure_displays(?string $badges_vid = 'badges',
       $formatter = \Drupal::moduleHandler()->moduleExists('smart_date') ? 'smartdate_default' : 'daterange_default';
       $vd->setComponent('field_appointment_timerange', ['type' => $formatter, 'label' => 'above', 'weight' => -10]);
     }
-    if ($vd->getComponent('field_appointment_capacity') === NULL) {
-      $vd->setComponent('field_appointment_capacity', ['type' => 'number_integer', 'label' => 'inline', 'weight' => -9]);
-    }
     if ($vd->getComponent('field_appointment_attendees') === NULL) {
       $vd->setComponent('field_appointment_attendees', ['type' => 'entity_reference_label', 'label' => 'above', 'weight' => -8, 'settings' => ['link' => TRUE]]);
+    }
+    // Remove the old capacity field if it exists on the display.
+    if ($vd->getComponent('field_appointment_capacity') !== NULL) {
+      $vd->removeComponent('field_appointment_capacity');
     }
     $vd->save();
   }
@@ -217,6 +201,33 @@ function appointment_facilitator_update_9006() {
 }
 
 /**
+ * Update: ensure fields & displays even on existing sites.
+ */
+function appointment_facilitator_update_9007() {
+  $conf = \Drupal::config('appointment_facilitator.settings');
+  $badges = $conf->get('badges_vocab_machine_name') ?: 'badges';
+  $bundle = $conf->get('facilitator_profile_bundle') ?: 'coordinator';
+
+  appointment_facilitator_ensure_fields($badges, $bundle);
+  appointment_facilitator_ensure_displays($badges, $bundle);
+}
+
+/**
+ * Update: Remove the per-appointment capacity field.
+ */
+function appointment_facilitator_update_9008() {
+  $field_storage = FieldStorageConfig::loadByName('node', 'field_appointment_capacity');
+  if ($field_storage) {
+    $field_storage->delete();
+  }
+
+  $field = FieldConfig::loadByName('node', 'appointment', 'field_appointment_capacity');
+  if ($field) {
+    $field->delete();
+  }
+}
+
+/**
  * Implements hook_requirements().
  */
 function appointment_facilitator_requirements($phase) {
@@ -231,7 +242,7 @@ function appointment_facilitator_requirements($phase) {
 
   // Check appointment fields.
   $need = [];
-  foreach (['field_appointment_timerange', 'field_appointment_capacity', 'field_appointment_attendees'] as $fname) {
+  foreach (['field_appointment_timerange', 'field_appointment_attendees'] as $fname) {
     if (!\Drupal\field\Entity\FieldConfig::loadByName('node', 'appointment', $fname)) {
       $need[] = $fname;
     }
@@ -267,16 +278,4 @@ function appointment_facilitator_requirements($phase) {
   }
 
   return $requirements;
-}
-
-/**
- * Update: ensure fields & displays even on existing sites.
- */
-function appointment_facilitator_update_9007() {
-  $conf = \Drupal::config('appointment_facilitator.settings');
-  $badges = $conf->get('badges_vocab_machine_name') ?: 'badges';
-  $bundle = $conf->get('facilitator_profile_bundle') ?: 'coordinator';
-
-  appointment_facilitator_ensure_fields($badges, $bundle);
-  appointment_facilitator_ensure_displays($badges, $bundle);
 }
