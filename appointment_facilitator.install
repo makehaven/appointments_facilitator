@@ -268,3 +268,15 @@ function appointment_facilitator_requirements($phase) {
 
   return $requirements;
 }
+
+/**
+ * Update: ensure fields & displays even on existing sites.
+ */
+function appointment_facilitator_update_9007() {
+  $conf = \Drupal::config('appointment_facilitator.settings');
+  $badges = $conf->get('badges_vocab_machine_name') ?: 'badges';
+  $bundle = $conf->get('facilitator_profile_bundle') ?: 'coordinator';
+
+  appointment_facilitator_ensure_fields($badges, $bundle);
+  appointment_facilitator_ensure_displays($badges, $bundle);
+}
