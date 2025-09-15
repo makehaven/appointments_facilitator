@@ -10,15 +10,40 @@ function appointment_facilitator_ensure_fields(string $badges_vid, ?string $prof
   // Appointment fields (content type: appointment).
   // Timerange uses smart_date if available, else daterange.
   $type = \Drupal::moduleHandler()->moduleExists('smart_date') ? 'smartdate' : 'daterange';
-  if (!FieldStorageConfig::loadByName('node', 'field_appointment_timerange')) {
+  $storage_fld_name = 'field_appointment_timerange';
+  $storage = FieldStorageConfig::loadByName('node', $storage_fld_name);
+
+  if (!$storage) {
+    $settings = ['end_field' => TRUE];
+    if ($type === 'smartdate') {
+        $settings['default_duration'] = 60;
+        $settings['default_duration_increments'] = '15,30,45,60,90,120';
+    }
     FieldStorageConfig::create([
-      'field_name' => 'field_appointment_timerange',
+      'field_name' => $storage_fld_name,
       'entity_type' => 'node',
       'type' => $type,
-      'settings' => ['end_field' => TRUE],
+      'settings' => $settings,
       'cardinality' => 1,
     ])->save();
+  } elseif ($type === 'smartdate') {
+    // Field exists, check if it needs smartdate settings.
+    $settings = $storage->getSettings();
+    $updated = false;
+    if (!isset($settings['default_duration'])) {
+        $settings['default_duration'] = 60;
+        $updated = true;
+    }
+    if (!isset($settings['default_duration_increments'])) {
+        $settings['default_duration_increments'] = '15,30,45,60,90,120';
+        $updated = true;
+    }
+    if ($updated) {
+        $storage->setSettings($settings);
+        $storage->save();
+    }
   }
+
   if (!FieldConfig::loadByName('node', 'appointment', 'field_appointment_timerange')) {
     FieldConfig::create([
       'field_name' => 'field_appointment_timerange',
@@ -115,10 +140,10 @@ function appointment_facilitator_ensure_fields(string $badges_vid, ?string $prof
 /**
  * Ensure form & view displays surface our fields (idempotent).
  */
-function appointment_facilitator_ensure_displays(): void {
+function appointment_facilitator_ensure_displays(?string $badges_vid = 'badges', ?string $profile_bundle = 'coordinator'): void {
   $em = \Drupal::entityTypeManager();
 
-  // Form display.
+  // Form display for node.appointment.
   if ($fd = $em->getStorage('entity_form_display')->load('node.appointment.default')) {
     if ($fd->getComponent('field_appointment_timerange') === NULL) {
       $widget = \Drupal::moduleHandler()->moduleExists('smart_date') ? 'smartdate_inline' : 'daterange_default';
@@ -133,7 +158,7 @@ function appointment_facilitator_ensure_displays(): void {
     $fd->save();
   }
 
-  // View display.
+  // View display for node.appointment.
   if ($vd = $em->getStorage('entity_view_display')->load('node.appointment.default')) {
     if ($vd->getComponent('field_appointment_timerange') === NULL) {
       $formatter = \Drupal::moduleHandler()->moduleExists('smart_date') ? 'smartdate_default' : 'daterange_default';
@@ -147,6 +172,24 @@ function appointment_facilitator_ensure_displays(): void {
     }
     $vd->save();
   }
+
+  // Form display for badge capacity.
+  if ($badges_vid && $em->getStorage('entity_form_display')->load('taxonomy_term.' . $badges_vid . '.default')) {
+    $fd_badge = $em->getStorage('entity_form_display')->load('taxonomy_term.' . $badges_vid . '.default');
+    if ($fd_badge->getComponent('field_badge_capacity') === NULL) {
+      $fd_badge->setComponent('field_badge_capacity', ['type' => 'number', 'weight' => 10, 'region' => 'content']);
+      $fd_badge->save();
+    }
+  }
+
+  // Form display for profile capacity.
+  if ($profile_bundle && \Drupal::moduleHandler()->moduleExists('profile') && $em->getStorage('entity_form_display')->load('profile.' . $profile_bundle . '.default')) {
+    $fd_profile = $em->getStorage('entity_form_display')->load('profile.' . $profile_bundle . '.default');
+    if ($fd_profile->getComponent('field_coordinator_capacity') === NULL) {
+      $fd_profile->setComponent('field_coordinator_capacity', ['type' => 'number', 'weight' => 10, 'region' => 'content']);
+      $fd_profile->save();
+    }
+  }
 }
 
 /**
@@ -158,7 +201,7 @@ function appointment_facilitator_install() {
   $bundle = $conf->get('facilitator_profile_bundle') ?: 'coordinator';
 
   appointment_facilitator_ensure_fields($badges, $bundle);
-  appointment_facilitator_ensure_displays();
+  appointment_facilitator_ensure_displays($badges, $bundle);
 }
 
 /**
@@ -170,7 +213,7 @@ function appointment_facilitator_update_9006() {
   $bundle = $conf->get('facilitator_profile_bundle') ?: 'coordinator';
 
   appointment_facilitator_ensure_fields($badges, $bundle);
-  appointment_facilitator_ensure_displays();
+  appointment_facilitator_ensure_displays($badges, $bundle);
 }
 
 /**
