@@ -32,10 +32,12 @@ function appointment_facilitator_entity_presave(EntityInterface $entity) {
 function appointment_facilitator_effective_capacity(\Drupal\node\NodeInterface $node) {
   $caps = [];
 
+  // Appointment-level capacity.
   if ($node->hasField('field_appointment_capacity') && !$node->get('field_appointment_capacity')->isEmpty()) {
     $caps[] = (int) $node->get('field_appointment_capacity')->value;
   }
 
+  // Badge capacities.
   if ($node->hasField('field_appointment_badges') && !$node->get('field_appointment_badges')->isEmpty()) {
     foreach ($node->get('field_appointment_badges')->referencedEntities() as $term) {
       if ($term->hasField('field_badge_capacity') && !$term->get('field_badge_capacity')->isEmpty()) {
@@ -44,10 +46,12 @@ function appointment_facilitator_effective_capacity(\Drupal\node\NodeInterface $
     }
   }
 
+  // Facilitator capacity from Profile (configurable bundle).
   if ($node->hasField('field_appointment_host') && !$node->get('field_appointment_host')->isEmpty()) {
     $user = $node->get('field_appointment_host')->entity;
-    if ($user && \Drupal::moduleHandler()->moduleExists('profile')) {
-      $profiles = \Drupal::entityTypeManager()->getStorage('profile')->loadByUser($user, 'coordinator');
+    $bundle = \Drupal::config('appointment_facilitator.settings')->get('facilitator_profile_bundle') ?: 'coordinator';
+    if ($user && \Drupal::moduleHandler()->moduleExists('profile') && $bundle) {
+      $profiles = \Drupal::entityTypeManager()->getStorage('profile')->loadByUser($user, $bundle);
       if ($profiles) {
         $profile = reset($profiles);
         if ($profile && $profile->hasField('field_coordinator_capacity') && !$profile->get('field_coordinator_capacity')->isEmpty()) {
@@ -57,11 +61,8 @@ function appointment_facilitator_effective_capacity(\Drupal\node\NodeInterface $
     }
   }
 
-  $caps = array_filter(array_map('intval', $caps), function($v) { return $v > 0; });
-  if (!$caps) {
-    return 1;
-  }
-  return min($caps);
+  $caps = array_filter(array_map('intval', $caps), fn($v) => $v > 0);
+  return $caps ? min($caps) : 1;
 }
 
 /**

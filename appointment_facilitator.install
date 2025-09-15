@@ -2,175 +2,74 @@
 
 use Drupal\field\Entity\FieldConfig;
 use Drupal\field\Entity\FieldStorageConfig;
-use Drupal\taxonomy\Entity\Vocabulary;
 
 /**
- * Add appointment extras if missing (safe on live).
+ * Create/attach capacity fields in a safe, idempotent way.
  */
-function appointment_facilitator_update_9001() {
-  $bundle = 'appointment';
-
-  $ensure_storage = function (string $entity_type, string $field_name, string $type, array $settings = [], int $cardinality = 1) {
-    if (!FieldStorageConfig::loadByName($entity_type, $field_name)) {
-      FieldStorageConfig::create([
-        'field_name' => $field_name,
-        'entity_type' => $entity_type,
-        'type' => $type,
-        'settings' => $settings,
-        'cardinality' => $cardinality,
-      ])->save();
-    }
-  };
-
-  $ensure_field = function (string $entity_type, string $bundle, string $field_name, string $label, array $settings = []) {
-    if (!FieldConfig::loadByName($entity_type, $bundle, $field_name)) {
-      FieldConfig::create([
-        'field_name' => $field_name,
-        'entity_type' => $entity_type,
-        'bundle' => $bundle,
-        'label' => $label,
-        'settings' => $settings,
-      ])->save();
-    }
-  };
-
-  // Smart Date range for appointments (if you adopt Smart Date).
-  $ensure_storage('node', 'field_appointment_timerange', 'smartdate', ['end_field' => TRUE], 1);
-  $ensure_field('node', $bundle, 'field_appointment_timerange', 'Appointment Time (Range)');
-
-  // Capacity (default 1).
-  $ensure_storage('node', 'field_appointment_capacity', 'integer', ['min' => 1], 1);
-  $ensure_field('node', $bundle, 'field_appointment_capacity', 'Capacity');
-
-  // Attendees (users, multi).
-  $ensure_storage('node', 'field_appointment_attendees', 'entity_reference', ['target_type' => 'user'], -1);
-  $ensure_field('node', $bundle, 'field_appointment_attendees', 'Attendees', ['handler' => 'default']);
-}
-
-/**
- * Add capacity field to Badge terms (optional ceiling).
- */
-function appointment_facilitator_update_9002() {
-  if (!FieldStorageConfig::loadByName('taxonomy_term', 'field_tool_capacity')) {
+function appointment_facilitator_ensure_fields(string $badges_vid, ?string $profile_bundle = NULL): void {
+  // Appointment fields (content type: appointment).
+  // Timerange uses smart_date if available, else daterange.
+  $type = \Drupal::moduleHandler()->moduleExists('smart_date') ? 'smartdate' : 'daterange';
+  if (!FieldStorageConfig::loadByName('node', 'field_appointment_timerange')) {
     FieldStorageConfig::create([
-      'field_name' => 'field_tool_capacity',
-      'entity_type' => 'taxonomy_term',
+      'field_name' => 'field_appointment_timerange',
+      'entity_type' => 'node',
+      'type' => $type,
+      'settings' => ['end_field' => TRUE],
+      'cardinality' => 1,
+    ])->save();
+  }
+  if (!FieldConfig::loadByName('node', 'appointment', 'field_appointment_timerange')) {
+    FieldConfig::create([
+      'field_name' => 'field_appointment_timerange',
+      'entity_type' => 'node',
+      'bundle' => 'appointment',
+      'label' => 'Appointment Time (Range)',
+      'settings' => [],
+    ])->save();
+  }
+
+  if (!FieldStorageConfig::loadByName('node', 'field_appointment_capacity')) {
+    FieldStorageConfig::create([
+      'field_name' => 'field_appointment_capacity',
+      'entity_type' => 'node',
       'type' => 'integer',
       'settings' => ['min' => 1],
       'cardinality' => 1,
     ])->save();
   }
-  if ($v = \Drupal::entityTypeManager()->getStorage('taxonomy_vocabulary')->load('badges')) {
-    if (!FieldConfig::loadByName('taxonomy_term', 'badges', 'field_tool_capacity')) {
-      FieldConfig::create([
-        'field_name' => 'field_tool_capacity',
-        'entity_type' => 'taxonomy_term',
-        'bundle' => 'badges',
-        'label' => 'Default Capacity for this Badge/Tool',
-      ])->save();
-    }
-  }
-}
-
-/**
- * Backfill: copy author into attendees where empty.
- */
-function appointment_facilitator_update_9003() {
-  $nids = \Drupal::entityQuery('node')
-    ->condition('type', 'appointment')
-    ->notExists('field_appointment_attendees.target_id')
-    ->execute();
-
-  if (!$nids) {
-    return;
+  if (!FieldConfig::loadByName('node', 'appointment', 'field_appointment_capacity')) {
+    FieldConfig::create([
+      'field_name' => 'field_appointment_capacity',
+      'entity_type' => 'node',
+      'bundle' => 'appointment',
+      'label' => 'Capacity',
+    ])->save();
   }
 
-  $storage = \Drupal::entityTypeManager()->getStorage('node');
-  foreach ($storage->loadMultiple($nids) as $node) {
-    /** @var \Drupal\node\NodeInterface $node */
-    $uid = (int) $node->getOwnerId();
-    if ($uid > 0 && $node->hasField('field_appointment_attendees') && $node->get('field_appointment_attendees')->isEmpty()) {
-      $node->get('field_appointment_attendees')->appendItem($uid);
-      $node->save();
-    }
+  if (!FieldStorageConfig::loadByName('node', 'field_appointment_attendees')) {
+    FieldStorageConfig::create([
+      'field_name' => 'field_appointment_attendees',
+      'entity_type' => 'node',
+      'type' => 'entity_reference',
+      'settings' => ['target_type' => 'user'],
+      'cardinality' => -1,
+    ])->save();
   }
-}
-
-/**
- * Ensure appointment extra fields exist and form/view displays updated.
- */
-function appointment_facilitator_update_9004() {
-  $bundle = 'appointment';
-
-  $ensure_storage = function ($etype, $fname, $type, $settings=[], $card=-1) {
-    if (!Drupal\field\Entity\FieldStorageConfig::loadByName($etype, $fname)) {
-      Drupal\field\Entity\FieldStorageConfig::create([
-        'field_name' => $fname,
-        'entity_type' => $etype,
-        'type' => $type,
-        'settings' => $settings,
-        'cardinality' => $card,
-      ])->save();
-    }
-  };
-  $ensure_field = function ($etype, $bundle, $fname, $label, $settings=[]) {
-    if (!Drupal\field\Entity\FieldConfig::loadByName($etype, $bundle, $fname)) {
-      Drupal\field\Entity\FieldConfig::create([
-        'field_name' => $fname,
-        'entity_type' => $etype,
-        'bundle' => $bundle,
-        'label' => $label,
-        'settings' => $settings,
-      ])->save();
-    }
-  };
-
-  // Smart Date if available, else fallback to daterange.
-  $type = Drupal::moduleHandler()->moduleExists('smart_date') ? 'smartdate' : 'daterange';
-  $ensure_storage('node','field_appointment_timerange',$type,['end_field'=>TRUE],1);
-  $ensure_field('node',$bundle,'field_appointment_timerange','Appointment Time (Range)');
-
-  $ensure_storage('node','field_appointment_capacity','integer',['min'=>1],1);
-  $ensure_field('node',$bundle,'field_appointment_capacity','Capacity');
-
-  $ensure_storage('node','field_appointment_attendees','entity_reference',['target_type'=>'user'],-1);
-  $ensure_field('node',$bundle,'field_appointment_attendees','Attendees',['handler'=>'default']);
-
-  // Update form display
-  $em = Drupal::entityTypeManager();
-  if ($fd = $em->getStorage('entity_form_display')->load('node.appointment.default')) {
-    if ($fd->getComponent('field_appointment_timerange') === NULL) {
-      $fd->setComponent('field_appointment_timerange',['type'=>$type=='smartdate'?'smartdate_inline':'daterange_default','weight'=>-10,'region'=>'content']);
-    }
-    if ($fd->getComponent('field_appointment_capacity') === NULL) {
-      $fd->setComponent('field_appointment_capacity',['type'=>'number','weight'=>-9,'region'=>'content']);
-    }
-    if ($fd->getComponent('field_appointment_attendees') === NULL) {
-      $fd->setComponent('field_appointment_attendees',['type'=>'entity_reference_autocomplete','weight'=>-8,'region'=>'content']);
-    }
-    $fd->save();
+  if (!FieldConfig::loadByName('node', 'appointment', 'field_appointment_attendees')) {
+    FieldConfig::create([
+      'field_name' => 'field_appointment_attendees',
+      'entity_type' => 'node',
+      'bundle' => 'appointment',
+      'label' => 'Attendees',
+      'settings' => ['handler' => 'default'],
+    ])->save();
   }
-  if ($vd = $em->getStorage('entity_view_display')->load('node.appointment.default')) {
-    if ($vd->getComponent('field_appointment_timerange') === NULL) {
-      $vd->setComponent('field_appointment_timerange',['type'=>$type=='smartdate'?'smartdate_default':'daterange_default','label'=>'above','weight'=>-10]);
-    }
-    if ($vd->getComponent('field_appointment_capacity') === NULL) {
-      $vd->setComponent('field_appointment_capacity',['type'=>'number_integer','label'=>'inline','weight'=>-9]);
-    }
-    if ($vd->getComponent('field_appointment_attendees') === NULL) {
-      $vd->setComponent('field_appointment_attendees',['type'=>'entity_reference_label','label'=>'above','weight'=>-8,'settings'=>['link'=>TRUE]]);
-    }
-    $vd->save();
-  }
-}
 
-/**
- * Create capacity fields on Badges and Coordinator profile type (if present).
- */
-function appointment_facilitator_update_9005() {
-  if (\Drupal::entityTypeManager()->getStorage('taxonomy_vocabulary')->load('badges')) {
-    if (!Drupal\field\Entity\FieldStorageConfig::loadByName('taxonomy_term', 'field_badge_capacity')) {
-      Drupal\field\Entity\FieldStorageConfig::create([
+  // Badge capacity on taxonomy terms (Badges vocabulary).
+  if ($badges_vid && \Drupal::entityTypeManager()->getStorage('taxonomy_vocabulary')->load($badges_vid)) {
+    if (!FieldStorageConfig::loadByName('taxonomy_term', 'field_badge_capacity')) {
+      FieldStorageConfig::create([
         'field_name' => 'field_badge_capacity',
         'entity_type' => 'taxonomy_term',
         'type' => 'integer',
@@ -178,21 +77,22 @@ function appointment_facilitator_update_9005() {
         'cardinality' => 1,
       ])->save();
     }
-    if (!Drupal\field\Entity\FieldConfig::loadByName('taxonomy_term', 'badges', 'field_badge_capacity')) {
-      Drupal\field\Entity\FieldConfig::create([
+    if (!FieldConfig::loadByName('taxonomy_term', $badges_vid, 'field_badge_capacity')) {
+      FieldConfig::create([
         'field_name' => 'field_badge_capacity',
         'entity_type' => 'taxonomy_term',
-        'bundle' => 'badges',
+        'bundle' => $badges_vid,
         'label' => 'Badge Max Attendees',
       ])->save();
     }
   }
 
-  if (\Drupal::moduleHandler()->moduleExists('profile')) {
-    $ptype = \Drupal::entityTypeManager()->getStorage('profile_type')->load('coordinator');
+  // Facilitator capacity on Profile (bundle configurable).
+  if ($profile_bundle && \Drupal::moduleHandler()->moduleExists('profile')) {
+    $ptype = \Drupal::entityTypeManager()->getStorage('profile_type')->load($profile_bundle);
     if ($ptype) {
-      if (!Drupal\field\Entity\FieldStorageConfig::loadByName('profile', 'field_coordinator_capacity')) {
-        Drupal\field\Entity\FieldStorageConfig::create([
+      if (!FieldStorageConfig::loadByName('profile', 'field_coordinator_capacity')) {
+        FieldStorageConfig::create([
           'field_name' => 'field_coordinator_capacity',
           'entity_type' => 'profile',
           'type' => 'integer',
@@ -200,14 +100,128 @@ function appointment_facilitator_update_9005() {
           'cardinality' => 1,
         ])->save();
       }
-      if (!Drupal\field\Entity\FieldConfig::loadByName('profile', 'coordinator', 'field_coordinator_capacity')) {
-        Drupal\field\Entity\FieldConfig::create([
+      if (!FieldConfig::loadByName('profile', $profile_bundle, 'field_coordinator_capacity')) {
+        FieldConfig::create([
           'field_name' => 'field_coordinator_capacity',
           'entity_type' => 'profile',
-          'bundle' => 'coordinator',
+          'bundle' => $profile_bundle,
           'label' => 'Max Attendees Per Appointment',
         ])->save();
       }
     }
   }
+}
+
+/**
+ * Ensure form & view displays surface our fields (idempotent).
+ */
+function appointment_facilitator_ensure_displays(): void {
+  $em = \Drupal::entityTypeManager();
+
+  // Form display.
+  if ($fd = $em->getStorage('entity_form_display')->load('node.appointment.default')) {
+    if ($fd->getComponent('field_appointment_timerange') === NULL) {
+      $widget = \Drupal::moduleHandler()->moduleExists('smart_date') ? 'smartdate_inline' : 'daterange_default';
+      $fd->setComponent('field_appointment_timerange', ['type' => $widget, 'weight' => -10, 'region' => 'content']);
+    }
+    if ($fd->getComponent('field_appointment_capacity') === NULL) {
+      $fd->setComponent('field_appointment_capacity', ['type' => 'number', 'weight' => -9, 'region' => 'content']);
+    }
+    if ($fd->getComponent('field_appointment_attendees') === NULL) {
+      $fd->setComponent('field_appointment_attendees', ['type' => 'entity_reference_autocomplete', 'weight' => -8, 'region' => 'content']);
+    }
+    $fd->save();
+  }
+
+  // View display.
+  if ($vd = $em->getStorage('entity_view_display')->load('node.appointment.default')) {
+    if ($vd->getComponent('field_appointment_timerange') === NULL) {
+      $formatter = \Drupal::moduleHandler()->moduleExists('smart_date') ? 'smartdate_default' : 'daterange_default';
+      $vd->setComponent('field_appointment_timerange', ['type' => $formatter, 'label' => 'above', 'weight' => -10]);
+    }
+    if ($vd->getComponent('field_appointment_capacity') === NULL) {
+      $vd->setComponent('field_appointment_capacity', ['type' => 'number_integer', 'label' => 'inline', 'weight' => -9]);
+    }
+    if ($vd->getComponent('field_appointment_attendees') === NULL) {
+      $vd->setComponent('field_appointment_attendees', ['type' => 'entity_reference_label', 'label' => 'above', 'weight' => -8, 'settings' => ['link' => TRUE]]);
+    }
+    $vd->save();
+  }
+}
+
+/**
+ * Implements hook_install().
+ */
+function appointment_facilitator_install() {
+  $conf = \Drupal::configFactory()->getEditable('appointment_facilitator.settings');
+  $badges = $conf->get('badges_vocab_machine_name') ?: 'badges';
+  $bundle = $conf->get('facilitator_profile_bundle') ?: 'coordinator';
+
+  appointment_facilitator_ensure_fields($badges, $bundle);
+  appointment_facilitator_ensure_displays();
+}
+
+/**
+ * Update: ensure fields & displays even on existing sites.
+ */
+function appointment_facilitator_update_9006() {
+  $conf = \Drupal::config('appointment_facilitator.settings');
+  $badges = $conf->get('badges_vocab_machine_name') ?: 'badges';
+  $bundle = $conf->get('facilitator_profile_bundle') ?: 'coordinator';
+
+  appointment_facilitator_ensure_fields($badges, $bundle);
+  appointment_facilitator_ensure_displays();
+}
+
+/**
+ * Implements hook_requirements().
+ */
+function appointment_facilitator_requirements($phase) {
+  $requirements = [];
+  if ($phase !== 'runtime') {
+    return $requirements;
+  }
+
+  $conf = \Drupal::config('appointment_facilitator.settings');
+  $badges = $conf->get('badges_vocab_machine_name') ?: 'badges';
+  $bundle = $conf->get('facilitator_profile_bundle') ?: 'coordinator';
+
+  // Check appointment fields.
+  $need = [];
+  foreach (['field_appointment_timerange', 'field_appointment_capacity', 'field_appointment_attendees'] as $fname) {
+    if (!\Drupal\field\Entity\FieldConfig::loadByName('node', 'appointment', $fname)) {
+      $need[] = $fname;
+    }
+  }
+  if ($need) {
+    $requirements['appointment_facilitator_appointment_fields'] = [
+      'title' => t('Appointment Facilitator: Appointment fields'),
+      'value' => t('Missing fields: @list', ['@list' => implode(', ', $need)]),
+      'severity' => REQUIREMENT_WARNING,
+    ];
+  }
+
+  // Check badges capacity field.
+  $has_badges = (bool) \Drupal::entityTypeManager()->getStorage('taxonomy_vocabulary')->load($badges);
+  if ($has_badges && !\Drupal\field\Entity\FieldConfig::loadByName('taxonomy_term', $badges, 'field_badge_capacity')) {
+    $requirements['appointment_facilitator_badge_field'] = [
+      'title' => t('Appointment Facilitator: Badge capacity'),
+      'value' => t('The vocabulary "@vid" is missing field_badge_capacity.', ['@vid' => $badges]),
+      'severity' => REQUIREMENT_WARNING,
+    ];
+  }
+
+  // Check facilitator profile capacity field if profile module exists.
+  if (\Drupal::moduleHandler()->moduleExists('profile')) {
+    $ptype = \Drupal::entityTypeManager()->getStorage('profile_type')->load($bundle);
+    if ($ptype && !\Drupal\field\Entity\FieldConfig::loadByName('profile', $bundle, 'field_coordinator_capacity')) {
+      $requirements['appointment_facilitator_profile_field'] = [
+        'title' => t('Appointment Facilitator: Facilitator capacity'),
+        'value' => t('The profile bundle "@bundle" is missing field_coordinator_capacity.', ['@bundle' => $bundle]),
+        'severity' => REQUIREMENT_WARNING,
+    ];
+    }
+  }
+
+  return $requirements;
 }

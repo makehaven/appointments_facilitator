@@ -5,3 +5,9 @@ appointment_facilitator.settings:
     show_always_join_cta:
       type: boolean
       label: 'Always show Join CTA even when effective capacity is 1'
+    badges_vocab_machine_name:
+      type: string
+      label: 'Badges vocabulary machine name'
+    facilitator_profile_bundle:
+      type: string
+      label: 'Facilitator profile bundle machine name'
