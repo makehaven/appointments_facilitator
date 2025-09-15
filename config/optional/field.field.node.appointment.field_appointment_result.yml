@@ -1,0 +1,21 @@
+uuid: 932957b3-c419-4d1e-92d0-458870f033b2
+langcode: en
+status: true
+dependencies:
+  config:
+    - field.storage.node.field_appointment_result
+    - node.type.appointment
+  module:
+    - options
+id: node.appointment.field_appointment_result
+field_name: field_appointment_result
+entity_type: node
+bundle: appointment
+label: 'Appointment Result'
+description: ''
+required: false
+translatable: false
+default_value: {  }
+default_value_callback: ''
+settings: {  }
+field_type: list_string

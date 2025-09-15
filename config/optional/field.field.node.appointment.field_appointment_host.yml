@@ -1,0 +1,31 @@
+uuid: 9e7377e1-cb5c-4afa-82ff-adb34af286c8
+langcode: en
+status: true
+dependencies:
+  config:
+    - field.storage.node.field_appointment_host
+    - node.type.appointment
+  module:
+    - epp
+third_party_settings:
+  epp:
+    value: '[current-page:query:host-uid]'
+    on_update: 0
+id: node.appointment.field_appointment_host
+field_name: field_appointment_host
+entity_type: node
+bundle: appointment
+label: 'Facilitator '
+description: ''
+required: true
+translatable: false
+default_value: {  }
+default_value_callback: ''
+settings:
+  handler: views
+  handler_settings:
+    view:
+      view_name: facilitator_reference
+      display_name: facilitator_reference_by_uid
+      arguments: {  }
+field_type: entity_reference

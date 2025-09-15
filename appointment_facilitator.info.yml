@@ -1,0 +1,14 @@
+name: Facilitator Appointments
+type: module
+description: Range-based appointments with capacity and attendees (non-breaking). Ships the appointment content type and key views.
+core_version_requirement: ^10 || ^11
+package: Custom
+dependencies:
+  - drupal:node
+  - drupal:user
+  - drupal:field
+  - drupal:taxonomy
+  - drupal:views
+  - smart_date:smart_date
+  - drupal:comment
+  - drupal:datetime

@@ -1,0 +1,19 @@
+uuid: fdbdf2d5-8284-4d2b-8706-2032bc64b8fc
+langcode: und
+status: true
+dependencies:
+  module:
+    - node
+id: node.field_appointment_note
+field_name: field_appointment_note
+entity_type: node
+type: string_long
+settings:
+  case_sensitive: false
+module: core
+locked: false
+cardinality: 1
+translatable: true
+indexes: {  }
+persist_with_no_fields: false
+custom_storage: false

@@ -1,0 +1,8 @@
+uuid: 2957560d-b168-4e1a-8ab0-db7be002a7f2
+langcode: en
+status: true
+dependencies: {  }
+id: comment_node_appointment
+label: 'Appointment comment'
+target_entity_type_id: node
+description: null

@@ -1,0 +1,7 @@
+appointment_facilitator.settings:
+  type: config_object
+  label: 'Appointment Facilitator settings'
+  mapping:
+    show_always_join_cta:
+      type: boolean
+      label: 'Always show Join CTA even when effective capacity is 1'

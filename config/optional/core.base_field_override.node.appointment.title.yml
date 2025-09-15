@@ -1,0 +1,18 @@
+uuid: c2e072e6-3eac-4d78-b9e4-32aa6aa1297d
+langcode: en
+status: true
+dependencies:
+  config:
+    - node.type.appointment
+id: node.appointment.title
+field_name: title
+entity_type: node
+bundle: appointment
+label: 'Appointment Descriptive Title'
+description: ''
+required: false
+translatable: true
+default_value: {  }
+default_value_callback: ''
+settings: {  }
+field_type: string

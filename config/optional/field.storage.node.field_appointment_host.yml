@@ -1,0 +1,20 @@
+uuid: 943a522c-08a0-4c32-8661-d50a7d34089b
+langcode: und
+status: true
+dependencies:
+  module:
+    - node
+    - user
+id: node.field_appointment_host
+field_name: field_appointment_host
+entity_type: node
+type: entity_reference
+settings:
+  target_type: user
+module: core
+locked: false
+cardinality: 1
+translatable: true
+indexes: {  }
+persist_with_no_fields: false
+custom_storage: false

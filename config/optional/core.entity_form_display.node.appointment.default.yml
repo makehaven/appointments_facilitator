@@ -1,0 +1,127 @@
+uuid: 0a421f50-a480-4c9d-837a-99823605b074
+langcode: en
+status: true
+dependencies:
+  config:
+    - field.field.node.appointment.comment_node_appointment
+    - field.field.node.appointment.field_appointment_badges
+    - field.field.node.appointment.field_appointment_date
+    - field.field.node.appointment.field_appointment_feedback
+    - field.field.node.appointment.field_appointment_host
+    - field.field.node.appointment.field_appointment_note
+    - field.field.node.appointment.field_appointment_purpose
+    - field.field.node.appointment.field_appointment_result
+    - field.field.node.appointment.field_appointment_slot
+    - field.field.node.appointment.field_appointment_status
+    - node.type.appointment
+  module:
+    - appointment_date_prepopulate
+id: node.appointment.default
+targetEntityType: node
+bundle: appointment
+mode: default
+content:
+  field_appointment_badges:
+    type: options_buttons
+    weight: 5
+    region: content
+    settings: {  }
+    third_party_settings:
+      conditional_fields:
+        1a3b7d75-f7d6-4928-968c-253bc614f3f7:
+          entity_type: node
+          bundle: appointment
+          dependee: field_appointment_purpose
+          settings:
+            state: visible
+            reset: false
+            condition: value
+            grouping: AND
+            values_set: 1
+            value: ''
+            values: {  }
+            value_form:
+              -
+                value: checkout
+            effect: show
+            effect_options: {  }
+            selector: ''
+  field_appointment_date:
+    type: plain_text_date
+    weight: 3
+    region: content
+    settings: {  }
+    third_party_settings: {  }
+  field_appointment_feedback:
+    type: string_textarea
+    weight: 9
+    region: content
+    settings:
+      rows: 2
+      placeholder: ''
+    third_party_settings: {  }
+  field_appointment_host:
+    type: entity_reference_autocomplete
+    weight: 2
+    region: content
+    settings:
+      match_operator: CONTAINS
+      match_limit: 10
+      size: 60
+      placeholder: ''
+    third_party_settings: {  }
+  field_appointment_note:
+    type: string_textarea
+    weight: 7
+    region: content
+    settings:
+      rows: 2
+      placeholder: ''
+    third_party_settings: {  }
+  field_appointment_purpose:
+    type: options_buttons
+    weight: 4
+    region: content
+    settings: {  }
+    third_party_settings: {  }
+  field_appointment_result:
+    type: options_buttons
+    weight: 8
+    region: content
+    settings: {  }
+    third_party_settings: {  }
+  field_appointment_slot:
+    type: options_buttons
+    weight: 6
+    region: content
+    settings: {  }
+    third_party_settings: {  }
+  field_appointment_status:
+    type: options_buttons
+    weight: 0
+    region: content
+    settings: {  }
+    third_party_settings: {  }
+  simple_sitemap:
+    weight: 10
+    region: content
+    settings: {  }
+    third_party_settings: {  }
+  title:
+    type: string_textfield
+    weight: 1
+    region: content
+    settings:
+      size: 60
+      placeholder: ''
+    third_party_settings: {  }
+hidden:
+  comment_node_appointment: true
+  created: true
+  path: true
+  promote: true
+  status: true
+  sticky: true
+  uid: true
+  url_redirects: true
+  uuid: true

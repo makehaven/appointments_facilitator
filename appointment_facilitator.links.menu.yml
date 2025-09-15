@@ -1,0 +1,6 @@
+appointment_facilitator.settings:
+  title: 'Appointment Facilitator'
+  description: 'Configure Join button behavior'
+  parent: system.admin_config_people
+  route_name: appointment_facilitator.settings
+  weight: 100

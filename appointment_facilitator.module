@@ -1,0 +1,106 @@
+<?php
+
+use Drupal\Core\Entity\EntityInterface;
+
+/**
+ * Keep legacy behavior: include author as attendee if none explicitly set.
+ * Enforce capacity minimum of 1 if present.
+ */
+function appointment_facilitator_entity_presave(EntityInterface $entity) {
+  if ($entity->getEntityTypeId() !== 'node' || $entity->bundle() !== 'appointment') {
+    return;
+  }
+
+  if ($entity->hasField('field_appointment_capacity')) {
+    $cap = (int) ($entity->get('field_appointment_capacity')->value ?? 1);
+    if ($cap <= 0) {
+      $entity->set('field_appointment_capacity', 1);
+    }
+  }
+
+  if ($entity->hasField('field_appointment_attendees') && $entity->get('field_appointment_attendees')->isEmpty()) {
+    $author_id = (int) $entity->getOwnerId();
+    if ($author_id > 0) {
+      $entity->get('field_appointment_attendees')->appendItem($author_id);
+    }
+  }
+}
+
+/**
+ * Compute effective capacity for an appointment node.
+ */
+function appointment_facilitator_effective_capacity(\Drupal\node\NodeInterface $node) {
+  $caps = [];
+
+  if ($node->hasField('field_appointment_capacity') && !$node->get('field_appointment_capacity')->isEmpty()) {
+    $caps[] = (int) $node->get('field_appointment_capacity')->value;
+  }
+
+  if ($node->hasField('field_appointment_badges') && !$node->get('field_appointment_badges')->isEmpty()) {
+    foreach ($node->get('field_appointment_badges')->referencedEntities() as $term) {
+      if ($term->hasField('field_badge_capacity') && !$term->get('field_badge_capacity')->isEmpty()) {
+        $caps[] = (int) $term->get('field_badge_capacity')->value;
+      }
+    }
+  }
+
+  if ($node->hasField('field_appointment_host') && !$node->get('field_appointment_host')->isEmpty()) {
+    $user = $node->get('field_appointment_host')->entity;
+    if ($user && \Drupal::moduleHandler()->moduleExists('profile')) {
+      $profiles = \Drupal::entityTypeManager()->getStorage('profile')->loadByUser($user, 'coordinator');
+      if ($profiles) {
+        $profile = reset($profiles);
+        if ($profile && $profile->hasField('field_coordinator_capacity') && !$profile->get('field_coordinator_capacity')->isEmpty()) {
+          $caps[] = (int) $profile->get('field_coordinator_capacity')->value;
+        }
+      }
+    }
+  }
+
+  $caps = array_filter(array_map('intval', $caps), function($v) { return $v > 0; });
+  if (!$caps) {
+    return 1;
+  }
+  return min($caps);
+}
+
+/**
+ * Show Join CTA only when effective capacity > 1, unless config forces always-show.
+ */
+function appointment_facilitator_entity_view(array &$build, \Drupal\Core\Entity\EntityInterface $entity, $view_mode, $langcode) {
+  if ($entity->getEntityTypeId() !== 'node' || $entity->bundle() !== 'appointment') {
+    return;
+  }
+  $account = \Drupal::currentUser();
+  if ($account->isAnonymous()) {
+    return;
+  }
+  if (!$entity->hasField('field_appointment_capacity') || !$entity->hasField('field_appointment_attendees')) {
+    return;
+  }
+
+  $conf = \Drupal::config('appointment_facilitator.settings');
+  $show_always = (bool) $conf->get('show_always_join_cta');
+
+  $effective = appointment_facilitator_effective_capacity($entity);
+  if (!$show_always && $effective <= 1) {
+    return;
+  }
+
+  $cap = max(1, (int) $entity->get('field_appointment_capacity')->value);
+  $attendees = $entity->get('field_appointment_attendees')->referencedEntities();
+  $remaining = max(0, $cap - count($attendees));
+  if ($remaining <= 0) {
+    return;
+  }
+
+  $url = \Drupal\Core\Url::fromRoute('appointment_facilitator.join', ['node' => $entity->id()]);
+  $link = \Drupal\Core\Link::fromTextAndUrl(t('Join this appointment'), $url)->toString();
+  $build['appointment_join'] = [
+    '#type' => 'container',
+    '#attributes' => ['class' => ['appointment-join-cta']],
+    'remaining' => ['#markup' => '<div><strong>'.t('Seats left').':</strong> '. (int) $remaining .'</div>'],
+    'cta' => ['#markup' => '<div class="join-btn">'. $link .'</div>'],
+    '#weight' => -50,
+  ];
+}

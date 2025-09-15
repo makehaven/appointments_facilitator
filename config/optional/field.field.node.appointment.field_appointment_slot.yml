@@ -1,0 +1,21 @@
+uuid: be69b5a1-b936-49da-a8c5-2d6c08733a1b
+langcode: en
+status: true
+dependencies:
+  config:
+    - field.storage.node.field_appointment_slot
+    - node.type.appointment
+  module:
+    - options
+id: node.appointment.field_appointment_slot
+field_name: field_appointment_slot
+entity_type: node
+bundle: appointment
+label: 'Available 1/2 Hours Slots (required)'
+description: 'Select multiple only if the badge your are requesting requires the time.'
+required: true
+translatable: false
+default_value: {  }
+default_value_callback: ''
+settings: {  }
+field_type: list_string

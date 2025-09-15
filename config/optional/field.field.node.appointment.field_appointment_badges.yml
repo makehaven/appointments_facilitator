@@ -1,0 +1,25 @@
+uuid: 55b028a7-28b8-42ee-ab9e-ad8d826cb70f
+langcode: en
+status: true
+dependencies:
+  config:
+    - field.storage.node.field_appointment_badges
+    - node.type.appointment
+id: node.appointment.field_appointment_badges
+field_name: field_appointment_badges
+entity_type: node
+bundle: appointment
+label: 'Appointment Badges'
+description: 'Only badges that are in a pending status on your profile and the facilitator can issue will be listed.'
+required: false
+translatable: false
+default_value: {  }
+default_value_callback: ''
+settings:
+  handler: views
+  handler_settings:
+    view:
+      view_name: badgers_reference
+      display_name: badge_reference_w_time
+      arguments: {  }
+field_type: entity_reference

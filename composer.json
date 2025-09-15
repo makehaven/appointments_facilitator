@@ -1,0 +1,8 @@
+{
+  "name": "makehaven/appointment_facilitator",
+  "type": "drupal-module",
+  "description": "Appointment content type, capacity, and joining for facilitators.",
+  "require": {
+    "drupal/core": "^10 || ^11"
+  }
+}

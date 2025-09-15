@@ -1,0 +1,21 @@
+uuid: e57d86ae-6c49-4bef-afa0-f55fdd0f52a3
+langcode: en
+status: true
+dependencies:
+  config:
+    - field.storage.node.field_appointment_purpose
+    - node.type.appointment
+  module:
+    - options
+id: node.appointment.field_appointment_purpose
+field_name: field_appointment_purpose
+entity_type: node
+bundle: appointment
+label: Purpose
+description: ''
+required: true
+translatable: false
+default_value: {  }
+default_value_callback: ''
+settings: {  }
+field_type: list_string

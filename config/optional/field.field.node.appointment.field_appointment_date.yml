@@ -1,0 +1,21 @@
+uuid: 9a722cb0-76b9-4ada-8aeb-c734ccd7b27b
+langcode: en
+status: true
+dependencies:
+  config:
+    - field.storage.node.field_appointment_date
+    - node.type.appointment
+  module:
+    - datetime
+id: node.appointment.field_appointment_date
+field_name: field_appointment_date
+entity_type: node
+bundle: appointment
+label: 'Appointment Date '
+description: ''
+required: true
+translatable: false
+default_value: {  }
+default_value_callback: ''
+settings: {  }
+field_type: datetime

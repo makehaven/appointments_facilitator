@@ -1,0 +1,16 @@
+appointment_facilitator.join:
+  path: '/appointment/{node}/join'
+  defaults:
+    _controller: '\Drupal\appointment_facilitator\Controller\JoinController::join'
+  requirements:
+    _entity_access: 'node.view'
+    _user_is_logged_in: 'TRUE'
+    node: '\d+'
+
+appointment_facilitator.settings:
+  path: '/admin/config/people/appointment-facilitator'
+  defaults:
+    _form: '\Drupal\appointment_facilitator\Form\SettingsForm'
+    _title: 'Appointment Facilitator settings'
+  requirements:
+    _permission: 'administer site configuration'

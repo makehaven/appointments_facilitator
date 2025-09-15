@@ -1,0 +1,42 @@
+uuid: c2b57c00-56fb-4e52-bf40-9bdd28a26658
+langcode: en
+status: true
+dependencies:
+  config:
+    - core.entity_view_mode.node.teaser
+    - field.field.node.appointment.comment_node_appointment
+    - field.field.node.appointment.field_appointment_badges
+    - field.field.node.appointment.field_appointment_date
+    - field.field.node.appointment.field_appointment_feedback
+    - field.field.node.appointment.field_appointment_host
+    - field.field.node.appointment.field_appointment_note
+    - field.field.node.appointment.field_appointment_purpose
+    - field.field.node.appointment.field_appointment_result
+    - field.field.node.appointment.field_appointment_slot
+    - field.field.node.appointment.field_appointment_status
+    - node.type.appointment
+  module:
+    - user
+id: node.appointment.teaser
+targetEntityType: node
+bundle: appointment
+mode: teaser
+content:
+  links:
+    settings: {  }
+    third_party_settings: {  }
+    weight: 100
+    region: content
+hidden:
+  breadcrumbs: true
+  comment_node_appointment: true
+  field_appointment_badges: true
+  field_appointment_date: true
+  field_appointment_feedback: true
+  field_appointment_host: true
+  field_appointment_note: true
+  field_appointment_purpose: true
+  field_appointment_result: true
+  field_appointment_slot: true
+  field_appointment_status: true
+  uuid: true

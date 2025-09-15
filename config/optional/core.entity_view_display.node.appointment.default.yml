@@ -1,0 +1,134 @@
+uuid: a4839af3-2704-4be6-9e19-d400f41f958b
+langcode: en
+status: true
+dependencies:
+  config:
+    - field.field.node.appointment.comment_node_appointment
+    - field.field.node.appointment.field_appointment_badges
+    - field.field.node.appointment.field_appointment_date
+    - field.field.node.appointment.field_appointment_feedback
+    - field.field.node.appointment.field_appointment_host
+    - field.field.node.appointment.field_appointment_note
+    - field.field.node.appointment.field_appointment_purpose
+    - field.field.node.appointment.field_appointment_result
+    - field.field.node.appointment.field_appointment_slot
+    - field.field.node.appointment.field_appointment_status
+    - node.type.appointment
+  module:
+    - datetime
+    - ds
+    - layout_builder
+    - options
+    - user
+third_party_settings:
+  layout_builder:
+    enabled: false
+    allow_custom: false
+  ds:
+    layout:
+      id: ds_1col
+      library: null
+      disable_css: false
+      entity_classes: all_classes
+      settings:
+        label: ''
+        classes:
+          layout_class: {  }
+          ds_content: {  }
+        wrappers:
+          ds_content: div
+        outer_wrapper: div
+        attributes: ''
+        link_attribute: ''
+        link_custom: ''
+    regions:
+      ds_content:
+        - field_appointment_status
+        - field_appointment_date
+        - field_appointment_slot
+        - node_author
+        - field_appointment_host
+        - field_appointment_purpose
+        - field_appointment_badges
+        - field_appointment_note
+        - field_appointment_result
+    fields:
+      node_author:
+        plugin_id: node_author
+        weight: 3
+        label: inline
+        formatter: author_linked
+id: node.appointment.default
+targetEntityType: node
+bundle: appointment
+mode: default
+content:
+  field_appointment_badges:
+    type: entity_reference_label
+    label: above
+    settings:
+      link: true
+    third_party_settings:
+      ds:
+        ds_limit: ''
+    weight: 6
+    region: ds_content
+  field_appointment_date:
+    type: datetime_default
+    label: inline
+    settings:
+      timezone_override: ''
+      format_type: date_only_long
+    third_party_settings: {  }
+    weight: 1
+    region: ds_content
+  field_appointment_host:
+    type: entity_reference_label
+    label: inline
+    settings:
+      link: true
+    third_party_settings: {  }
+    weight: 4
+    region: ds_content
+  field_appointment_note:
+    type: basic_string
+    label: above
+    settings: {  }
+    third_party_settings: {  }
+    weight: 7
+    region: ds_content
+  field_appointment_purpose:
+    type: list_default
+    label: above
+    settings: {  }
+    third_party_settings: {  }
+    weight: 5
+    region: ds_content
+  field_appointment_result:
+    type: list_default
+    label: above
+    settings: {  }
+    third_party_settings: {  }
+    weight: 8
+    region: ds_content
+  field_appointment_slot:
+    type: list_default
+    label: inline
+    settings: {  }
+    third_party_settings: {  }
+    weight: 2
+    region: ds_content
+  field_appointment_status:
+    type: list_default
+    label: above
+    settings: {  }
+    third_party_settings: {  }
+    weight: 0
+    region: ds_content
+hidden:
+  breadcrumbs: true
+  comment_node_appointment: true
+  field_appointment_feedback: true
+  links: true
+  search_api_excerpt: true
+  uuid: true
