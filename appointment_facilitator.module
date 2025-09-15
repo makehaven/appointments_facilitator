@@ -40,7 +40,7 @@ function appointment_facilitator_effective_capacity(\Drupal\node\NodeInterface $
   // Badge capacities.
   if ($node->hasField('field_appointment_badges') && !$node->get('field_appointment_badges')->isEmpty()) {
     foreach ($node->get('field_appointment_badges')->referencedEntities() as $term) {
-      if ($term->hasField('field_badge_capacity') && !$term->get('field_badge_capacity')->isEmpty()) {
+      if (is_object($term) && $term->hasField('field_badge_capacity') && !$term->get('field_badge_capacity')->isEmpty()) {
         $caps[] = (int) $term->get('field_badge_capacity')->value;
       }
     }
@@ -54,7 +54,7 @@ function appointment_facilitator_effective_capacity(\Drupal\node\NodeInterface $
       $profiles = \Drupal::entityTypeManager()->getStorage('profile')->loadByUser($user, $bundle);
       if ($profiles) {
         $profile = reset($profiles);
-        if ($profile && $profile->hasField('field_coordinator_capacity') && !$profile->get('field_coordinator_capacity')->isEmpty()) {
+        if (is_object($profile) && $profile->hasField('field_coordinator_capacity') && !$profile->get('field_coordinator_capacity')->isEmpty()) {
           $caps[] = (int) $profile->get('field_coordinator_capacity')->value;
         }
       }
