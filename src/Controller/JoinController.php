@@ -14,17 +14,14 @@ class JoinController extends ControllerBase {
       return new RedirectResponse('/');
     }
 
-    // Appointment-level capacity.
-    $cap = (int) ($node->get('field_appointment_capacity')->value ?? 1);
-    if ($cap <= 0) {
-      $cap = 1;
-    }
+    // Get the effective capacity from our helper function.
+    $capacity = appointment_facilitator_effective_capacity($node);
 
     // Current attendees.
     $attendees = $node->hasField('field_appointment_attendees')
       ? $node->get('field_appointment_attendees')->getValue()
       : [];
-    $current = count($attendees);
+    $current_count = count($attendees);
 
     // Already joined?
     $uid = (int) $this->currentUser()->id();
@@ -35,7 +32,7 @@ class JoinController extends ControllerBase {
       }
     }
 
-    if ($current >= $cap) {
+    if ($current_count >= $capacity) {
       $this->messenger()->addWarning('This appointment is full.');
       return $this->redirect('entity.node.canonical', ['node' => $node->id()]);
     }
