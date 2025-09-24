@@ -4,56 +4,133 @@ use Drupal\field\Entity\FieldConfig;
 use Drupal\field\Entity\FieldStorageConfig;
 
 /**
- * Create/attach capacity fields in a safe, idempotent way.
+ * Ensures timerange field and displays are correctly configured.
+ *
+ * This helper function is idempotent and safe to run multiple times. It
+ * handles the creation and updating of the 'field_appointment_timerange'
+ * field, its storage, and its displays, correctly switching between 'daterange'
+ * and 'smartdate' field types based on whether the Smart Date module is
+ * enabled.
  */
-function appointment_facilitator_ensure_fields(string $badges_vid, ?string $profile_bundle = NULL): void {
-  // Appointment fields (content type: appointment).
-  // Timerange uses smart_date if available, else daterange.
-  $type = \Drupal::moduleHandler()->moduleExists('smart_date') ? 'smartdate' : 'daterange';
-  $storage_fld_name = 'field_appointment_timerange';
-  $storage = FieldStorageConfig::loadByName('node', $storage_fld_name);
+function _appointment_facilitator_ensure_timerange_and_displays() {
+  $smart_date_enabled = \Drupal::moduleHandler()->moduleExists('smart_date');
+  $field_storage_name = 'field_appointment_timerange';
+  $entity_type = 'node';
+  $bundle = 'appointment';
+  $target_type = $smart_date_enabled ? 'smartdate' : 'daterange';
 
-  if (!$storage) {
-    $settings = ['end_field' => TRUE];
-    if ($type === 'smartdate') {
+  // === 1. Field Storage ===
+  $storage = FieldStorageConfig::loadByName($entity_type, $field_storage_name);
+
+  if ($storage) {
+    // Storage exists, check if it needs to be updated.
+    $needs_save = FALSE;
+
+    // Update field type if it doesn't match the target type.
+    if ($storage->getType() !== $target_type) {
+      $storage->set('type', $target_type);
+      $needs_save = TRUE;
+    }
+
+    // Update settings based on whether Smart Date is enabled.
+    $settings = $storage->getSettings();
+    $original_settings = $settings;
+
+    if ($smart_date_enabled) {
+      $settings['end_field'] = TRUE;
+      if (!isset($settings['default_duration'])) {
         $settings['default_duration'] = 60;
+      }
+      if (!isset($settings['default_duration_increments'])) {
         $settings['default_duration_increments'] = '15,30,45,60,90,120';
+      }
+    }
+    else {
+      // If smart_date is disabled, remove its specific settings.
+      unset($settings['default_duration'], $settings['default_duration_increments']);
+    }
+
+    if ($settings !== $original_settings) {
+      $storage->setSettings($settings);
+      $needs_save = TRUE;
+    }
+
+    if ($needs_save) {
+      $storage->save();
+    }
+  }
+  else {
+    // Storage does not exist, create it.
+    $settings = ['end_field' => TRUE];
+    if ($smart_date_enabled) {
+      $settings['default_duration'] = 60;
+      $settings['default_duration_increments'] = '15,30,45,60,90,120';
     }
     FieldStorageConfig::create([
-      'field_name' => $storage_fld_name,
-      'entity_type' => 'node',
-      'type' => $type,
+      'field_name' => $field_storage_name,
+      'entity_type' => $entity_type,
+      'type' => $target_type,
       'settings' => $settings,
       'cardinality' => 1,
     ])->save();
-  } elseif ($type === 'smartdate') {
-    // Field exists, check if it needs smartdate settings.
-    $settings = $storage->getSettings();
-    $updated = false;
-    if (!isset($settings['default_duration'])) {
-        $settings['default_duration'] = 60;
-        $updated = true;
-    }
-    if (!isset($settings['default_duration_increments'])) {
-        $settings['default_duration_increments'] = '15,30,45,60,90,120';
-        $updated = true;
-    }
-    if ($updated) {
-        $storage->setSettings($settings);
-        $storage->save();
-    }
   }
 
-  if (!FieldConfig::loadByName('node', 'appointment', 'field_appointment_timerange')) {
+  // === 2. Field Instance ===
+  if (!FieldConfig::loadByName($entity_type, $bundle, $field_storage_name)) {
     FieldConfig::create([
-      'field_name' => 'field_appointment_timerange',
-      'entity_type' => 'node',
-      'bundle' => 'appointment',
+      'field_name' => $field_storage_name,
+      'entity_type' => $entity_type,
+      'bundle' => $bundle,
       'label' => 'Appointment Time (Range)',
       'settings' => [],
     ])->save();
   }
 
+  $em = \Drupal::entityTypeManager();
+
+  // === 3. Form Display ===
+  if ($fd = $em->getStorage('entity_form_display')->load('node.appointment.default')) {
+    $target_widget = $smart_date_enabled ? 'smartdate_inline' : 'daterange_default';
+    $component = $fd->getComponent($field_storage_name);
+    // Only update if component is missing or has the wrong type.
+    if (!$component || $component['type'] !== $target_widget) {
+      $new_component = [
+        'type' => $target_widget,
+        'weight' => $component['weight'] ?? -10,
+        'region' => $component['region'] ?? 'content',
+        'settings' => $component['settings'] ?? [],
+      ];
+      $fd->setComponent($field_storage_name, $new_component)->save();
+    }
+  }
+
+  // === 4. View Display ===
+  if ($vd = $em->getStorage('entity_view_display')->load('node.appointment.default')) {
+    $target_formatter = $smart_date_enabled ? 'smartdate_default' : 'daterange_default';
+    $component = $vd->getComponent($field_storage_name);
+    // Only update if component is missing or has the wrong type.
+    if (!$component || $component['type'] !== $target_formatter) {
+      $new_component = [
+        'type' => $target_formatter,
+        'label' => $component['label'] ?? 'above',
+        'weight' => $component['weight'] ?? -10,
+        'settings' => $component['settings'] ?? ($target_formatter === 'smartdate_default' ? [
+          'format_type' => 'medium',
+          'separator' => '-',
+          'display_all_day' => FALSE,
+        ] : []),
+      ];
+      $vd->setComponent($field_storage_name, $new_component)->save();
+    }
+  }
+}
+
+
+/**
+ * Create/attach capacity fields in a safe, idempotent way.
+ */
+function appointment_facilitator_ensure_fields(string $badges_vid, ?string $profile_bundle = NULL): void {
+  // Appointment fields (content type: appointment).
   if (!FieldStorageConfig::loadByName('node', 'field_appointment_attendees')) {
     FieldStorageConfig::create([
       'field_name' => 'field_appointment_attendees',
@@ -127,10 +204,6 @@ function appointment_facilitator_ensure_displays(?string $badges_vid = 'badges',
 
   // Form display for node.appointment.
   if ($fd = $em->getStorage('entity_form_display')->load('node.appointment.default')) {
-    if ($fd->getComponent('field_appointment_timerange') === NULL) {
-      $widget = \Drupal::moduleHandler()->moduleExists('smart_date') ? 'smartdate_inline' : 'daterange_default';
-      $fd->setComponent('field_appointment_timerange', ['type' => $widget, 'weight' => -10, 'region' => 'content']);
-    }
     if ($fd->getComponent('field_appointment_attendees') === NULL) {
       $fd->setComponent('field_appointment_attendees', ['type' => 'entity_reference_autocomplete', 'weight' => -8, 'region' => 'content']);
     }
@@ -143,10 +216,6 @@ function appointment_facilitator_ensure_displays(?string $badges_vid = 'badges',
 
   // View display for node.appointment.
   if ($vd = $em->getStorage('entity_view_display')->load('node.appointment.default')) {
-    if ($vd->getComponent('field_appointment_timerange') === NULL) {
-      $formatter = \Drupal::moduleHandler()->moduleExists('smart_date') ? 'smartdate_default' : 'daterange_default';
-      $vd->setComponent('field_appointment_timerange', ['type' => $formatter, 'label' => 'above', 'weight' => -10]);
-    }
     if ($vd->getComponent('field_appointment_attendees') === NULL) {
       $vd->setComponent('field_appointment_attendees', ['type' => 'entity_reference_label', 'label' => 'above', 'weight' => -8, 'settings' => ['link' => TRUE]]);
     }
@@ -184,6 +253,7 @@ function appointment_facilitator_install() {
   $badges = $conf->get('badges_vocab_machine_name') ?: 'badges';
   $bundle = $conf->get('facilitator_profile_bundle') ?: 'coordinator';
 
+  _appointment_facilitator_ensure_timerange_and_displays();
   appointment_facilitator_ensure_fields($badges, $bundle);
   appointment_facilitator_ensure_displays($badges, $bundle);
 }
@@ -278,4 +348,11 @@ function appointment_facilitator_update_9009() {
 
   appointment_facilitator_ensure_fields($badges, $bundle);
   appointment_facilitator_ensure_displays($badges, $bundle);
+}
+
+/**
+ * Update: Ensure timerange field and displays are correctly configured.
+ */
+function appointment_facilitator_update_9010() {
+  _appointment_facilitator_ensure_timerange_and_displays();
 }
