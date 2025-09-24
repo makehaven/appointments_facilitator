@@ -94,7 +94,7 @@ function _appointment_facilitator_ensure_timerange_and_displays() {
     $component = $fd->getComponent($field_storage_name);
     $needs_save = FALSE;
 
-    // Check if the component needs to be updated.
+    // Check if the component needs to be updated due to wrong type.
     if (!$component || $component['type'] !== $target_widget) {
       $needs_save = TRUE;
     }
@@ -103,15 +103,20 @@ function _appointment_facilitator_ensure_timerange_and_displays() {
     $original_settings = $new_settings;
 
     if ($smart_date_enabled) {
-      // These settings are required by the smartdate widget.
       $smart_date_widget_defaults = [
         'default_duration' => 60,
         'default_duration_increments' => '15,30,45,60,90,120',
       ];
-      // Merge defaults into the settings, preserving existing values.
-      $new_settings += $smart_date_widget_defaults;
+      // Forcefully apply defaults if they are missing or null. This is more
+      // robust than the array union operator, which doesn't handle nulls.
+      foreach ($smart_date_widget_defaults as $key => $value) {
+        if (!isset($new_settings[$key])) {
+          $new_settings[$key] = $value;
+        }
+      }
     }
 
+    // Check if the component needs to be updated due to changed settings.
     if ($new_settings !== $original_settings) {
       $needs_save = TRUE;
     }
