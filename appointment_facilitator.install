@@ -92,13 +92,36 @@ function _appointment_facilitator_ensure_timerange_and_displays() {
   if ($fd = $em->getStorage('entity_form_display')->load('node.appointment.default')) {
     $target_widget = $smart_date_enabled ? 'smartdate_inline' : 'daterange_default';
     $component = $fd->getComponent($field_storage_name);
-    // Only update if component is missing or has the wrong type.
+    $needs_save = FALSE;
+
+    // Check if the component needs to be updated.
     if (!$component || $component['type'] !== $target_widget) {
+      $needs_save = TRUE;
+    }
+
+    $new_settings = $component['settings'] ?? [];
+    $original_settings = $new_settings;
+
+    if ($smart_date_enabled) {
+      // These settings are required by the smartdate widget.
+      $smart_date_widget_defaults = [
+        'default_duration' => 60,
+        'default_duration_increments' => '15,30,45,60,90,120',
+      ];
+      // Merge defaults into the settings, preserving existing values.
+      $new_settings += $smart_date_widget_defaults;
+    }
+
+    if ($new_settings !== $original_settings) {
+      $needs_save = TRUE;
+    }
+
+    if ($needs_save) {
       $new_component = [
         'type' => $target_widget,
         'weight' => $component['weight'] ?? -10,
         'region' => $component['region'] ?? 'content',
-        'settings' => $component['settings'] ?? [],
+        'settings' => $new_settings,
       ];
       $fd->setComponent($field_storage_name, $new_component)->save();
     }
