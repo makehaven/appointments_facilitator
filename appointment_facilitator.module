@@ -106,3 +106,33 @@ function appointment_facilitator_entity_view(array &$build, EntityInterface $ent
     '#weight' => -50,
   ];
 }
+
+/**
+ * Implements hook_entity_form_display_alter().
+ *
+ * Provides default settings for Smart Date widgets to prevent fatal errors
+ * when the field is not configured as expected.
+ *
+ * @see https://www.drupal.org/project/smart_date/issues/3422612
+ */
+function appointment_facilitator_entity_form_display_alter(&$form_display, $context) {
+  if ($context['entity_type'] == 'node' && $context['bundle'] == 'appointment') {
+    if ($component = $form_display->getComponent('field_appointment_date')) {
+      // The specific widget can vary, but they all use the same settings.
+      $smart_date_widgets = [
+        'smartdate_inline',
+        'smartdate_default',
+        'smartdate_timestamp',
+      ];
+      if (in_array($component['type'], $smart_date_widgets)) {
+        if (empty($component['settings']['default_duration_increments'])) {
+          $component['settings']['default_duration_increments'] = '1, 5, 10, 15, 30, 45, 60';
+        }
+        if (empty($component['settings']['default_duration'])) {
+          $component['settings']['default_duration'] = 60;
+        }
+        $form_display->setComponent('field_appointment_date', $component);
+      }
+    }
+  }
+}
