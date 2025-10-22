@@ -384,3 +384,10 @@ function appointment_facilitator_update_9009() {
 function appointment_facilitator_update_9010() {
   _appointment_facilitator_ensure_timerange_and_displays();
 }
+
+/**
+ * Update: Re-ensure timerange field and displays are correctly configured.
+ */
+function appointment_facilitator_update_9011() {
+  _appointment_facilitator_ensure_timerange_and_displays();
+}
