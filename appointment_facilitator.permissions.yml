@@ -1,0 +1,4 @@
+view appointment facilitator reports:
+  title: 'View facilitator appointment reports'
+  description: 'View aggregated statistics for facilitator appointments and badge sessions.'
+  restrict access: true

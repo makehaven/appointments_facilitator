@@ -14,3 +14,11 @@ appointment_facilitator.settings:
     _title: 'Appointment Facilitator settings'
   requirements:
     _permission: 'administer site configuration'
+
+appointment_facilitator.stats:
+  path: '/admin/reports/appointment-facilitator'
+  defaults:
+    _controller: '\Drupal\appointment_facilitator\Controller\StatsController::overview'
+    _title: 'Facilitator appointment stats'
+  requirements:
+    _permission: 'view appointment facilitator reports'

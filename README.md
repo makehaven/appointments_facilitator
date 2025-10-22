@@ -82,3 +82,7 @@ This module provides a solid foundation for a flexible appointment system. Futur
     -   Email notifications for joining, reminders, and cancellations.
     -   Calendar (iCal) integrations for attendees.
 -   **Permissions:** The join workflow could be tied into a more granular permission system.
+
+## Reporting
+
+Administrators with the `View facilitator appointment reports` permission can visit `/admin/reports/appointment-facilitator` to review appointment counts, badge session totals, and top badges per facilitator. Filters for date range, purpose, and cancelled sessions help focus on specific activity windows before exporting data.

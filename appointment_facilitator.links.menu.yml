@@ -4,3 +4,10 @@ appointment_facilitator.settings:
   parent: system.admin_config_people
   route_name: appointment_facilitator.settings
   weight: 100
+
+appointment_facilitator.stats:
+  title: 'Facilitator appointment stats'
+  description: 'Review appointment and badge counts per facilitator'
+  parent: system.admin_reports
+  route_name: appointment_facilitator.stats
+  weight: 100
