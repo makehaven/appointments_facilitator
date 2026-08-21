@@ -171,6 +171,8 @@ class AppointmentStats {
           'arrival_rate' => NULL,
           'arrival_status_counts' => [],
           'term_start' => NULL,
+          'term_open_ended' => FALSE,
+          'term_single_shift' => FALSE,
           'term_end' => NULL,
           'term_elapsed_weeks' => NULL,
           'term_elapsed_months' => NULL,
@@ -187,6 +189,8 @@ class AppointmentStats {
         if ($term_range) {
           $summary['facilitators'][$host_id]['term_start'] = $term_range['start'];
           $summary['facilitators'][$host_id]['term_end'] = $term_range['end'];
+          $summary['facilitators'][$host_id]['term_open_ended'] = !empty($term_range['open_ended']);
+          $summary['facilitators'][$host_id]['term_single_shift'] = !empty($term_range['single_shift']);
           $term_date = $this->extractDate($node);
           if ($term_date) {
             $appointment_ts = $term_date->getTimestamp();
@@ -656,26 +660,103 @@ class AppointmentStats {
     }
 
     $now_ts = \Drupal::time()->getRequestTime();
-    $candidates = [];
-    foreach ($profile->get('field_coordinator_hours')->getValue() as $item) {
-      $start_ts = $item['value'] ?? NULL;
-      $end_ts = $item['end_value'] ?? NULL;
-      $timezone = $item['timezone'] ?? date_default_timezone_get();
-      $rrule_id = $item['rrule'] ?? NULL;
-      if ($rrule_id && class_exists(SmartDateRule::class)) {
-        $rule = SmartDateRule::load((int) $rrule_id);
-        if ($rule) {
-          $start_ts = (int) $rule->get('start')->value;
-          $end_ts = (int) $rule->get('end')->value;
-          $timezone = $rule->getTimeZone() ?? $timezone;
-        }
+    $items = $profile->get('field_coordinator_hours')->getValue();
+
+    // A recurring rule's LAST generated instance is the only way to bound a
+    // COUNT=n rule, so index every item's end by the rule it belongs to before
+    // building candidates.
+    $last_instance_by_rule = [];
+    foreach ($items as $item) {
+      $rrule_id = (int) ($item['rrule'] ?? 0);
+      $item_end = (int) ($item['end_value'] ?? 0);
+      if ($rrule_id > 0 && $item_end > 0) {
+        $last_instance_by_rule[$rrule_id] = max($last_instance_by_rule[$rrule_id] ?? 0, $item_end);
       }
-      if (!$start_ts || !$end_ts) {
+    }
+
+    $candidates = [];
+    $seen_rules = [];
+    foreach ($items as $item) {
+      $timezone = $item['timezone'] ?? date_default_timezone_get();
+      $rrule_id = (int) ($item['rrule'] ?? 0);
+
+      if ($rrule_id <= 0 || !class_exists(SmartDateRule::class)) {
+        // A one-off shift with no rule: it is its own (very short) range. This
+        // is rare — on live only a handful of rows have no rule at all.
+        $start_ts = (int) ($item['value'] ?? 0);
+        $end_ts = (int) ($item['end_value'] ?? 0);
+        if (!$start_ts || !$end_ts) {
+          continue;
+        }
+        $candidates[] = [
+          'start_ts' => $start_ts,
+          'end_ts' => $end_ts,
+          'open_ended' => FALSE,
+          'single_shift' => TRUE,
+          'timezone' => $timezone,
+        ];
         continue;
       }
+
+      // Every instance of a rule yields the same term, so evaluate each rule
+      // once rather than 100+ times.
+      if (isset($seen_rules[$rrule_id])) {
+        continue;
+      }
+      $seen_rules[$rrule_id] = TRUE;
+
+      $rule = SmartDateRule::load($rrule_id);
+      if (!$rule) {
+        continue;
+      }
+      $timezone = $rule->getTimeZone() ?? $timezone;
+
+      // NOTE: SmartDateRule::start/::end are the FIRST INSTANCE's bounds — a
+      // single shift — not the span of the rule. Reading ::end as the term end
+      // is what made every facilitator's "current term" a one-day window. The
+      // term start is the first instance's start; the term end has to come from
+      // the rule's limit.
+      $start_ts = (int) $rule->get('start')->value;
+      if (!$start_ts) {
+        continue;
+      }
+
+      $end_ts = NULL;
+      $open_ended = FALSE;
+      $limit = trim((string) $rule->get('limit')->value);
+
+      if ((int) $rule->get('unlimited')->value === 1 || $limit === '') {
+        // No end was ever set: the rule runs forward indefinitely. This is the
+        // majority case on live, and it means the recurrence honestly does not
+        // record a term end — do not invent one.
+        $open_ended = TRUE;
+      }
+      elseif (stripos($limit, 'UNTIL=') === 0) {
+        $until = strtotime(substr($limit, 6));
+        if ($until) {
+          $end_ts = $until;
+        }
+        else {
+          $open_ended = TRUE;
+        }
+      }
+      elseif (stripos($limit, 'COUNT=') === 0) {
+        // Bounded by a number of occurrences: the last generated instance is
+        // the effective end.
+        $end_ts = $last_instance_by_rule[$rrule_id] ?? NULL;
+        if (!$end_ts) {
+          $open_ended = TRUE;
+        }
+      }
+      else {
+        $open_ended = TRUE;
+      }
+
       $candidates[] = [
-        'start_ts' => (int) $start_ts,
-        'end_ts' => (int) $end_ts,
+        'start_ts' => $start_ts,
+        'end_ts' => $end_ts,
+        'open_ended' => $open_ended,
+        'single_shift' => FALSE,
         'timezone' => $timezone,
       ];
     }
@@ -688,10 +769,12 @@ class AppointmentStats {
     $past = [];
     $future = [];
     foreach ($candidates as $candidate) {
-      if ($candidate['start_ts'] <= $now_ts && $candidate['end_ts'] >= $now_ts) {
+      $started = $candidate['start_ts'] <= $now_ts;
+      $finished = !$candidate['open_ended'] && $candidate['end_ts'] < $now_ts;
+      if ($started && !$finished) {
         $current[] = $candidate;
       }
-      elseif ($candidate['end_ts'] < $now_ts) {
+      elseif ($finished) {
         $past[] = $candidate;
       }
       else {
@@ -719,15 +802,27 @@ class AppointmentStats {
 
     $timezone = new \DateTimeZone($chosen['timezone'] ?: date_default_timezone_get());
     $start = (new \DateTimeImmutable('@' . $chosen['start_ts']))->setTimezone($timezone);
-    $end = (new \DateTimeImmutable('@' . $chosen['end_ts']))->setTimezone($timezone);
-    $effective_end_ts = min($chosen['end_ts'], $now_ts);
+
+    // An open-ended term has no end date to show. Report "through today" so
+    // callers that filter appointments still get a usable window, and flag it
+    // so the UI can say "ongoing" instead of printing today as an end date.
+    // A term that has not started yet must not report an end before its start
+    // (an open-ended rule beginning next month would otherwise read as a
+    // negative window).
+    $end_ts = $chosen['open_ended']
+      ? max($now_ts, (int) $chosen['start_ts'])
+      : (int) $chosen['end_ts'];
+    $end = (new \DateTimeImmutable('@' . $end_ts))->setTimezone($timezone);
+    $effective_end_ts = max((int) $chosen['start_ts'], min($end_ts, $now_ts));
 
     return [
       'start' => $start,
       'end' => $end,
       'start_ts' => $chosen['start_ts'],
-      'end_ts' => $chosen['end_ts'],
+      'end_ts' => $end_ts,
       'effective_end_ts' => $effective_end_ts,
+      'open_ended' => $chosen['open_ended'],
+      'single_shift' => !empty($chosen['single_shift']),
     ];
   }
 

@@ -70,6 +70,8 @@ class FacilitatorStatsController extends ControllerBase {
       $term = [
         'start' => $facilitator['term_start'],
         'end' => $facilitator['term_end'],
+        'open_ended' => !empty($facilitator['term_open_ended']),
+        'single_shift' => !empty($facilitator['term_single_shift']),
       ];
     }
     else {
@@ -115,10 +117,29 @@ class FacilitatorStatsController extends ControllerBase {
 
     $term_value = $this->t('Not set');
     if ($term) {
-      $term_value = $this->t('@start to @end', [
-        '@start' => $this->dateFormatterService->format($term['start']->getTimestamp(), 'custom', 'M j, Y'),
-        '@end' => $this->dateFormatterService->format($term['end']->getTimestamp(), 'custom', 'M j, Y'),
-      ]);
+      // Most facilitators' scheduled hours recur with no end date, so there is
+      // no term end to print. Say so, and show the window the counts below
+      // actually cover, rather than printing today as if it were a term end.
+      if (!empty($term['single_shift'])) {
+        // No recurring rule at all — one scheduled shift is not a term, and
+        // printing it as "X to X" is what the original report looked like.
+        $term_value = $this->t('No recurring schedule set — one shift on @start', [
+          '@start' => $this->dateFormatterService->format($term['start']->getTimestamp(), 'custom', 'M j, Y'),
+        ]);
+      }
+      elseif (empty($term['open_ended'])) {
+        $term_value = $this->t('@start to @end', [
+          '@start' => $this->dateFormatterService->format($term['start']->getTimestamp(), 'custom', 'M j, Y'),
+          '@end' => $this->dateFormatterService->format($term['end']->getTimestamp(), 'custom', 'M j, Y'),
+        ]);
+      }
+      else {
+        // The recurrence has no end date, which is true of most facilitators'
+        // hours — say so rather than printing today as if it were a term end.
+        $term_value = $this->t('Ongoing since @start (no end date set) — counts below cover @start to today', [
+          '@start' => $this->dateFormatterService->format($term['start']->getTimestamp(), 'custom', 'M j, Y'),
+        ]);
+      }
     }
 
     $benchmark_rows = $this->buildBenchmarkRows($uid, $overall['facilitators']);
@@ -301,6 +322,8 @@ class FacilitatorStatsController extends ControllerBase {
       'arrival_rate' => NULL,
       'arrival_status_counts' => [],
       'term_start' => NULL,
+      'term_open_ended' => FALSE,
+      'term_single_shift' => FALSE,
       'term_end' => NULL,
       'term_elapsed_weeks' => NULL,
       'term_elapsed_months' => NULL,
