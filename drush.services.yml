@@ -15,3 +15,11 @@ services:
       - '@database'
     tags:
       - { name: drush.command }
+
+  appointment_facilitator.schedule_audit_commands:
+    class: Drupal\appointment_facilitator\Commands\ScheduleAuditCommands
+    arguments:
+      - '@entity_type.manager'
+      - '@appointment_facilitator.schedule_consistency'
+    tags:
+      - { name: drush.command }

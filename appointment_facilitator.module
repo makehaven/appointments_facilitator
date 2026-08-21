@@ -3390,11 +3390,57 @@ function appointment_facilitator_node_insert(NodeInterface $node): void {
     return;
   }
 
+  _appointment_facilitator_warn_if_outside_posted_hours($node);
+
   if (_appointment_facilitator_skip_nested_reservation_sync()) {
     return;
   }
 
   _appointment_facilitator_sync_tool_reservations($node);
+}
+
+/**
+ * Logs when a saved appointment lands outside the host's posted hours.
+ *
+ * The stored time is computed from the facilitator's posted hours at booking
+ * time and never checked against them afterwards, so when those hours drift
+ * from the recurrence rule that generates them the appointment is quietly
+ * recorded at the wrong hour and stays there. That is how a water-jet checkout
+ * came to display 7:30pm for a session that ran inside a 3:00–6:00pm shift.
+ *
+ * This does not block the save — a facilitator legitimately takes appointments
+ * outside a posted shift — it just makes the discrepancy visible instead of
+ * silent. `drush appointment-facilitator:audit-times` lists them.
+ */
+function _appointment_facilitator_warn_if_outside_posted_hours(NodeInterface $node): void {
+  if (!\Drupal::hasService('appointment_facilitator.schedule_consistency')) {
+    return;
+  }
+
+  try {
+    $result = \Drupal::service('appointment_facilitator.schedule_consistency')->checkAppointment($node);
+  }
+  catch (\Throwable $e) {
+    // A reporting aid must never break a booking.
+    return;
+  }
+
+  if ($result === NULL) {
+    return;
+  }
+
+  $formatter = \Drupal::service('date.formatter');
+  \Drupal::logger('appointment_facilitator')->warning(
+    'Appointment @nid is stored at @start–@end but the host has @shift posted that day (@offset minutes off). The facilitator schedule may have moved after this was booked; see drush appointment-facilitator:audit-times.',
+    [
+      '@nid' => $node->id(),
+      '@start' => $formatter->format($result['start'], 'custom', 'g:ia'),
+      '@end' => $formatter->format($result['end'], 'custom', 'g:ia'),
+      '@shift' => $formatter->format($result['shifts'][0]['start'], 'custom', 'g:ia') . '-'
+      . $formatter->format($result['shifts'][0]['end'], 'custom', 'g:ia'),
+      '@offset' => $result['offset_minutes'] ?? '?',
+    ]
+  );
 }
 
 /**

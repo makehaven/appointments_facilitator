@@ -40,3 +40,9 @@ services:
       - '@http_client'
       - '@config.factory'
       - '@logger.factory'
+
+  appointment_facilitator.schedule_consistency:
+    class: Drupal\appointment_facilitator\Service\ScheduleConsistencyChecker
+    arguments:
+      - '@entity_type.manager'
+      - '@database'
