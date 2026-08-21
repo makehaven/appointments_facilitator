@@ -5554,6 +5554,16 @@ function _appointment_facilitator_are_slots_consecutive($slot_value): bool {
 
 /**
  * Resolves the base start time for a facilitator shift.
+ *
+ * The resolved base is reconciled against the shift the host actually posted
+ * that day. Slot offsets are meaningless except relative to a real shift, and
+ * the `start_time` parameter they are measured from has arrived wrong in two
+ * different ways: carrying the shift's END (every appointment for one
+ * facilitator sat exactly one shift-length late, which is what surfaced as a
+ * water-jet checkout showing 7:30pm for a 3–6pm shift), and losing the
+ * meridiem so an afternoon shift parsed as the small hours. Both produce times
+ * outside the posted hours, so when the base does not match a posted start,
+ * the posted start wins.
  */
 function _appointment_facilitator_resolve_slot_base_time(NodeInterface $node, string $base_date): ?\DateTimeImmutable {
   $timezone = \Drupal::config('system.date')->get('timezone.default') ?: date_default_timezone_get();
@@ -5577,11 +5587,74 @@ function _appointment_facilitator_resolve_slot_base_time(NodeInterface $node, st
   foreach ($candidates as $raw_time) {
     $parsed = _appointment_facilitator_parse_slot_time($base_date, (string) $raw_time, $timezone);
     if ($parsed instanceof \DateTimeImmutable) {
-      return $parsed;
+      return _appointment_facilitator_reconcile_base_with_posted_shift($node, $parsed);
     }
   }
 
   return NULL;
+}
+
+/**
+ * Snaps a slot base time to the host's posted shift when it does not match one.
+ *
+ * Returns the base unchanged when the host posted no shift that day, when it
+ * already matches a posted start, or when it falls inside a posted shift (a
+ * facilitator may legitimately start a booking mid-shift). Otherwise the
+ * nearest posted start replaces it, and the correction is logged so a wrong
+ * `start_time` upstream stays visible rather than silently absorbed.
+ */
+function _appointment_facilitator_reconcile_base_with_posted_shift(NodeInterface $node, \DateTimeImmutable $base): \DateTimeImmutable {
+  if (!\Drupal::hasService('appointment_facilitator.schedule_consistency')) {
+    return $base;
+  }
+  if (!$node->hasField('field_appointment_host') || $node->get('field_appointment_host')->isEmpty()) {
+    return $base;
+  }
+
+  $host_uid = (int) $node->get('field_appointment_host')->target_id;
+  if ($host_uid <= 0) {
+    return $base;
+  }
+
+  try {
+    $shifts = \Drupal::service('appointment_facilitator.schedule_consistency')
+      ->getPostedShifts($host_uid, $base->getTimestamp());
+  }
+  catch (\Throwable $e) {
+    return $base;
+  }
+
+  if (!$shifts) {
+    return $base;
+  }
+
+  $timestamp = $base->getTimestamp();
+  $nearest = NULL;
+  foreach ($shifts as $shift) {
+    if ($timestamp >= $shift['start'] && $timestamp < $shift['end']) {
+      // Already inside a posted shift — nothing to correct.
+      return $base;
+    }
+    if ($nearest === NULL || abs($timestamp - $shift['start']) < abs($timestamp - $nearest)) {
+      $nearest = $shift['start'];
+    }
+  }
+
+  if ($nearest === NULL || $nearest === $timestamp) {
+    return $base;
+  }
+
+  $corrected = $base->setTimestamp($nearest);
+  \Drupal::logger('appointment_facilitator')->warning(
+    'Slot base @given for host @host is outside the posted shift; using the posted start @used instead. Check the booking link\'s start_time parameter.',
+    [
+      '@given' => $base->format('Y-m-d g:ia'),
+      '@host' => $host_uid,
+      '@used' => $corrected->format('Y-m-d g:ia'),
+    ]
+  );
+
+  return $corrected;
 }
 
 /**

@@ -6,7 +6,6 @@ use Drush\Commands\DrushCommands;
 use Drupal\Core\Entity\EntityFieldManagerInterface;
 use Drupal\Core\Entity\EntityTypeManagerInterface;
 use Drupal\node\NodeInterface;
-use Symfony\Component\Console\Input\InputOption;
 
 class AppointmentFacilitatorCommands extends DrushCommands {
 
@@ -32,9 +31,15 @@ class AppointmentFacilitatorCommands extends DrushCommands {
    * @usage drush appointment-facilitator:backfill-arrivals --start=2025-01-01 --end=2025-03-31
    */
   public function backfillArrivals(array $args, array $options = [
-    'start' => InputOption::VALUE_OPTIONAL,
-    'end' => InputOption::VALUE_OPTIONAL,
-    'force' => InputOption::VALUE_NONE,
+    // NULL, not InputOption::VALUE_OPTIONAL: that constant is the integer 2,
+    // which is truthy, so an unpassed --start was used as the literal date
+    // string "2" instead of falling back to Jan 1.
+    'start' => NULL,
+    'end' => NULL,
+    // FALSE, not InputOption::VALUE_NONE: that constant is the integer 4, so
+    // it made --force permanently on and every run overwrote arrival statuses
+    // that were already set.
+    'force' => FALSE,
   ]): void {
     if (!$this->entityTypeManager->hasDefinition('access_control_log')) {
       $this->logger()->warning('Access control log entity not available. Aborting.');
