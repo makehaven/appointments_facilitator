@@ -334,4 +334,190 @@ class BadgeHealthCommands extends DrushCommands {
     return $matching;
   }
 
+  /**
+   * Ranks badges by how many members are waiting, against who can teach them.
+   *
+   * The point of this report is recruiting, not cleanup. Being named in
+   * `field_badge_issuer` records that a person is *qualified* on a tool, and
+   * qualification does not expire — someone who steps back from facilitating
+   * stays on the list, so that if they return we already know what they can
+   * check out. The issuer list is therefore a standing pool of people we can
+   * call, and must never be pruned to match the current facilitator roster.
+   *
+   * What that makes actionable is the gap between the two: a badge with real
+   * demand and nobody currently active on it has a call list already attached
+   * to it. This report puts the demand next to that call list.
+   *
+   * Waiting is counted with the same guards as the badge nudge
+   * (docs/proposals/BADGE_NUDGE_PLAN.md): current members only, one row per
+   * member+badge, checkout-required badges only, excluding anyone who already
+   * holds the badge, and excluding retired badges.
+   *
+   * @command appointment-facilitator:badge-demand
+   * @option understaffed Only badges with this many active issuers or fewer. Omit for every badge.
+   * @option min Only badges with at least this many members waiting. Defaults to 1.
+   * @option recent-days Window for the "recent" column. Defaults to 90.
+   * @usage drush appointment-facilitator:badge-demand --understaffed=1
+   *   The recruiting list: demand on tools nobody is currently covering.
+   * @usage drush appointment-facilitator:badge-demand
+   *   Every checkout badge with someone waiting, ranked by demand.
+   */
+  public function badgeDemand(
+    array $options = [
+      'understaffed' => NULL,
+      'min' => 1,
+      'recent-days' => 90,
+    ],
+  ): int {
+    $min = max(1, (int) $options['min']);
+    $recent_days = max(1, (int) $options['recent-days']);
+    $understaffed = $options['understaffed'] === NULL ? NULL : (int) $options['understaffed'];
+
+    $demand = $this->pendingDemand($recent_days);
+    if (!$demand) {
+      $this->output()->writeln('Nobody is waiting on a checkout badge.');
+      return self::EXIT_SUCCESS;
+    }
+
+    $rows = [];
+    foreach ($demand as $tid => $counts) {
+      if ($counts['members'] < $min) {
+        continue;
+      }
+
+      $qualified = $this->issuers($tid);
+      $active = [];
+      $available = [];
+      foreach ($qualified as $uid => $issuer_name) {
+        if (in_array('facilitator', $this->userRoles($uid), TRUE)) {
+          $active[$uid] = $issuer_name;
+        }
+        else {
+          $available[$uid] = $issuer_name;
+        }
+      }
+
+      if ($understaffed !== NULL && count($active) > $understaffed) {
+        continue;
+      }
+
+      $rows[] = [
+        'badge' => $counts['name'],
+        'waiting' => $counts['members'],
+        'recent' => $counts['recent'],
+        'qualified' => count($qualified),
+        'active' => count($active),
+        'call' => $available,
+      ];
+    }
+
+    if (!$rows) {
+      $this->output()->writeln('No badge matches those filters.');
+      return self::EXIT_SUCCESS;
+    }
+
+    usort($rows, fn(array $a, array $b) => $b['waiting'] <=> $a['waiting']);
+
+    $header = $understaffed !== NULL
+      ? 'Badges with demand and ' . $understaffed . ' or fewer active issuers (' . count($rows) . '):'
+      : 'Checkout badges with members waiting (' . count($rows) . '):';
+    $this->output()->writeln($header);
+    $this->output()->writeln('');
+    $this->output()->writeln(sprintf('  %-38s %8s %8s %10s %8s', 'BADGE', 'WAITING', 'RECENT', 'QUALIFIED', 'ACTIVE'));
+
+    $total_waiting = 0;
+    foreach ($rows as $row) {
+      $total_waiting += $row['waiting'];
+      $this->output()->writeln(sprintf(
+        '  %-38s %8d %8d %10d %8d',
+        mb_strimwidth($row['badge'], 0, 38, '…'),
+        $row['waiting'],
+        $row['recent'],
+        $row['qualified'],
+        $row['active']
+      ));
+      // The call list is the point of the recruiting view, so show it for every
+      // row there. Outside that view it only earns its space when nobody at all
+      // is covering the tool.
+      if ($row['call'] && ($understaffed !== NULL || $row['active'] === 0)) {
+        $this->output()->writeln('        qualified, not currently facilitating: ' . implode(', ', $row['call']));
+      }
+    }
+
+    $this->output()->writeln('');
+    $this->output()->writeln(sprintf(
+      '  %d member-badge pairs waiting across %d badge(s); RECENT is the last %d days.',
+      $total_waiting,
+      count($rows),
+      $recent_days
+    ));
+
+    return self::EXIT_SUCCESS;
+  }
+
+  /**
+   * Returns tid => [name, members, recent] for every badge with people waiting.
+   *
+   * One row per member+badge: 12 pairs on live have more than one pending
+   * request (legacy — retakes no longer create a second), so counting rows
+   * would overstate demand.
+   */
+  protected function pendingDemand(int $recent_days): array {
+    $cutoff = \Drupal::time()->getRequestTime() - ($recent_days * 86400);
+
+    $query = $this->database->select('node__field_badge_status', 's');
+    $query->join('node_field_data', 'n', 'n.nid = s.entity_id');
+    $query->join('node__field_badge_requested', 'br', 'br.entity_id = n.nid');
+    $query->join('taxonomy_term_field_data', 't', 't.tid = br.field_badge_requested_target_id');
+    // Current members only — 3,120 pending requests belong to people who have
+    // left, and they are a rejoin audience, not demand for a facilitator.
+    $query->join('user__roles', 'r', "r.entity_id = n.uid AND r.roles_target_id = 'member'");
+    // Checkout badges only: a pending row on a no-checkout or class badge is a
+    // data problem, not somebody waiting for a person.
+    $query->join('taxonomy_term__field_badge_checkout_requirement', 'req',
+      "req.entity_id = t.tid AND req.field_badge_checkout_requirement_value = 'yes'");
+    $query->leftJoin('taxonomy_term__field_badge_inactive', 'bi', 'bi.entity_id = t.tid');
+
+    $query->condition('s.field_badge_status_value', 'pending');
+    $query->condition('n.uid', 1, '>');
+    $query->condition('t.vid', 'badges');
+    $query->condition('t.status', 1);
+    $group = $query->orConditionGroup()
+      ->isNull('bi.field_badge_inactive_value')
+      ->condition('bi.field_badge_inactive_value', 1, '<>');
+    $query->condition($group);
+
+    // Exclude anyone who already holds the badge — 32 pending rows on live are
+    // duplicates of an active grant and nudging those people would be wrong.
+    $held = $this->database->select('node__field_badge_status', 's2');
+    $held->join('node_field_data', 'n2', 'n2.nid = s2.entity_id');
+    $held->join('node__field_badge_requested', 'br2', 'br2.entity_id = n2.nid');
+    $held->addExpression('1');
+    $held->where('n2.uid = n.uid');
+    $held->where('br2.field_badge_requested_target_id = br.field_badge_requested_target_id');
+    $held->condition('s2.field_badge_status_value', 'active');
+    $query->notExists($held);
+
+    $query->fields('t', ['tid', 'name']);
+    $query->fields('n', ['uid']);
+    $query->addExpression('MAX(n.created)', 'newest');
+    $query->groupBy('t.tid');
+    $query->groupBy('t.name');
+    $query->groupBy('n.uid');
+
+    $demand = [];
+    foreach ($query->execute() as $record) {
+      $tid = (int) $record->tid;
+      if (!isset($demand[$tid])) {
+        $demand[$tid] = ['name' => $record->name, 'members' => 0, 'recent' => 0];
+      }
+      $demand[$tid]['members']++;
+      if ((int) $record->newest >= $cutoff) {
+        $demand[$tid]['recent']++;
+      }
+    }
+
+    return $demand;
+  }
+
 }
