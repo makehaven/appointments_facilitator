@@ -717,7 +717,7 @@ class StatsController extends ControllerBase {
       'query' => ['host' => $uid],
     ]);
 
-    return [
+    $build = [
       '#type' => 'container',
       '#attributes' => ['class' => ['appointment-facilitator-name-links']],
       'profile' => [
@@ -725,12 +725,22 @@ class StatsController extends ControllerBase {
         '#title' => $name,
         '#url' => $url,
       ],
-      'feedback' => [
+    ];
+
+    // The narrative report is manager-only ('view appointment facilitator
+    // reports'). Facilitators reach this page through 'view own facilitator
+    // stats', so rendering the link unconditionally handed them a link that
+    // always returned access denied. Only offer it to viewers who can follow
+    // it; facilitators still see their own feedback on /facilitator/dashboard.
+    if ($feedback_url->access()) {
+      $build['feedback'] = [
         '#markup' => Link::fromTextAndUrl($this->t('Feedback'), $feedback_url)->toString(),
         '#prefix' => '<div class="appointment-facilitator-name-links__secondary">',
         '#suffix' => '</div>',
-      ],
-    ];
+      ];
+    }
+
+    return $build;
   }
 
   protected function buildSummaryItems(array $summary, array $purpose_labels, array $result_labels, array $status_labels): array {
@@ -768,8 +778,12 @@ class StatsController extends ControllerBase {
       $items[] = Markup::create($this->t('Arrival status mix: @list', ['@list' => $this->formatDistribution($summary['arrival_status_totals'], $arrival_status_labels)]));
     }
 
+    // Manager-only report — see buildFacilitatorNameRenderable(). Hidden rather
+    // than shown-and-denied for anyone without the permission.
     $feedback_report_url = Url::fromRoute('appointment_facilitator.feedback_report');
-    $items[] = Link::fromTextAndUrl($this->t('View All Facilitator Feedback'), $feedback_report_url);
+    if ($feedback_report_url->access()) {
+      $items[] = Link::fromTextAndUrl($this->t('View All Facilitator Feedback'), $feedback_report_url);
+    }
 
     return $items;
   }

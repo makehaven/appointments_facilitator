@@ -1615,8 +1615,14 @@ function _appointment_facilitator_badge_checklist_is_blank(TermInterface $badge)
  * Renders the "I've watched the video" toggle below the video iframe.
  *
  * Skipped when the badge has no video — the step is moot in that case.
- * The form lives just after group_video (weight=2) and before group_quiz
- * (weight=3) so it reads as a transition between the two phases.
+ * The form lives just after group_video and before group_documentation so it
+ * reads as a transition out of the watching phase.
+ *
+ * Weights come from core.entity_view_display.taxonomy_term.badges.full:
+ * group_prerequisite=2, group_video=3, group_documentation=4, group_quiz=5.
+ * The comment here used to say group_video was weight 2; the display was
+ * re-weighted and this was not, which put "I reviewed the materials" ABOVE
+ * the materials (reported in the 2026-08-25 staff badge session).
  */
 function _appointment_facilitator_attach_video_watched_form(array &$build, TermInterface $term): void {
   if (!$term->hasField('field_badge_video') || $term->get('field_badge_video')->isEmpty()) {
@@ -1636,7 +1642,7 @@ function _appointment_facilitator_attach_video_watched_form(array &$build, TermI
   }
   $build['appointment_facilitator_video_watched'] = [
     '#type' => 'container',
-    '#weight' => 2.5,
+    '#weight' => 3.5,
     '#attributes' => ['class' => ['badge-video-watched']],
     'form' => $form,
     '#cache' => [

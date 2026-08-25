@@ -23,3 +23,11 @@ services:
       - '@appointment_facilitator.schedule_consistency'
     tags:
       - { name: drush.command }
+
+  appointment_facilitator.badge_health_commands:
+    class: Drupal\appointment_facilitator\Commands\BadgeHealthCommands
+    arguments:
+      - '@entity_type.manager'
+      - '@database'
+    tags:
+      - { name: drush.command }
