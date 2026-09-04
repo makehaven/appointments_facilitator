@@ -34,6 +34,14 @@ class BadgeUserStatusResolver {
   public const DOCS_NOT_SUBMITTED = 'not_submitted';
   public const DOCS_PENDING_REVIEW = 'pending_review';
   public const DOCS_APPROVED = 'approved';
+  /**
+   * The badge requires documentation, but the member is registered for (or
+   * attended) a class that issues this badge, so the form is not needed —
+   * the instructor issues the badge at the end of class. Treated like an
+   * unapproved status by the facilitator-scheduling gates (the class *is*
+   * the checkout), but the badge page must not ask for the form.
+   */
+  public const DOCS_SATISFIED_BY_CLASS = 'satisfied_by_class';
 
   public function __construct(
     protected EntityTypeManagerInterface $entityTypeManager,
@@ -158,6 +166,12 @@ class BadgeUserStatusResolver {
     }
     if (!empty($gate['documentation_approved'])) {
       return self::DOCS_APPROVED;
+    }
+    // A class registration outranks "under review": a member who took the
+    // class AND filled in the form (because the page used to ask them to)
+    // should not be told staff still has to review anything.
+    if (!empty($gate['class_registration_satisfies_docs'])) {
+      return self::DOCS_SATISFIED_BY_CLASS;
     }
     if (!empty($gate['documentation_submitted'])) {
       return self::DOCS_PENDING_REVIEW;

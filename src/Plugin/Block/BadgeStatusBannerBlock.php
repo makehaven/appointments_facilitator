@@ -144,6 +144,12 @@ class BadgeStatusBannerBlock extends BlockBase implements ContainerFactoryPlugin
         $this->formatSubmittedAgo($submitted_at),
         NULL,
       ],
+      BadgeUserStatusResolver::DOCS_SATISFIED_BY_CLASS => [
+        'success',
+        (string) $this->t('Documentation: not needed'),
+        (string) $this->t("You're registered for a class that includes this badge. Your instructor issues it at the end of class — no form to submit."),
+        NULL,
+      ],
       default => [
         'danger',
         (string) $this->t('Documentation: not submitted'),
@@ -399,6 +405,17 @@ TWIG,
 
       case BadgeUserStatusResolver::STATE_PENDING:
         $docs_status = $resolved['documentation_status'] ?? BadgeUserStatusResolver::DOCS_NOT_REQUIRED;
+        if ($docs_status === BadgeUserStatusResolver::DOCS_SATISFIED_BY_CLASS) {
+          // The class includes the badging session: the instructor
+          // activates the badge from the class checkout page, so there is
+          // no facilitator slot to book and no form to send.
+          return [
+            'progress',
+            $this->t('Quiz passed — your instructor will issue this badge at the end of your class.'),
+            $this->t('Nothing else to submit. If your class has already happened and the badge is still pending, ask your instructor to complete the class checkout.'),
+            NULL,
+          ];
+        }
         $needs_docs = ($docs_status === BadgeUserStatusResolver::DOCS_NOT_SUBMITTED
           || $docs_status === BadgeUserStatusResolver::DOCS_PENDING_REVIEW);
         if ($needs_docs) {

@@ -748,7 +748,10 @@ class JoinAppointmentForm extends FormBase {
       }
       $resolved = $resolver->resolve($uid, $term);
       $ds = $resolved['documentation_status'] ?? 'not_required';
-      if ($ds === 'not_submitted' || $ds === 'pending_review') {
+      // Same rule as the scheduling gate in the .module file: anything short
+      // of "not required" / "approved" blocks — including a class
+      // registration, because that class is where the badge is issued.
+      if ($ds !== 'not_required' && $ds !== 'approved') {
         $blocked[] = $term;
       }
     }

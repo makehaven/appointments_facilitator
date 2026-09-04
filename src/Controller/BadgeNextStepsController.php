@@ -990,16 +990,28 @@ class BadgeNextStepsController extends ControllerBase {
       return [];
     }
 
+    // The badge→event link is a Drupal field on the civicrm_event entity, and
+    // an entity query conditioned on it returns nothing (civicrm_entity only
+    // translates base-field conditions), so this list was always empty. Read
+    // the field table, then filter the candidates on the CiviCRM side.
     try {
-      $query = $this->entityTypeManager()->getStorage('civicrm_event')->getQuery()
+      $tagged = \Drupal::database()->select('civicrm_event__field_civi_event_badges', 'eb')
+        ->fields('eb', ['entity_id'])
+        ->condition('eb.field_civi_event_badges_target_id', $badge_tid)
+        ->condition('eb.deleted', 0)
+        ->execute()
+        ->fetchCol();
+      if (!$tagged) {
+        return [];
+      }
+      $ids = $this->entityTypeManager()->getStorage('civicrm_event')->getQuery()
         ->accessCheck(FALSE)
-        ->condition('field_civi_event_badges.target_id', $badge_tid)
+        ->condition('id', array_map('intval', $tagged), 'IN')
         ->condition('start_date', date('Y-m-d H:i:s'), '>=')
         ->condition('is_active', 1)
         ->sort('start_date', 'ASC')
-        ->range(0, 5);
-
-      $ids = $query->execute();
+        ->range(0, 5)
+        ->execute();
       if (!$ids) {
         return [];
       }

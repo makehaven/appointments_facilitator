@@ -282,12 +282,17 @@ class BadgePrerequisiteGate {
       return FALSE;
     }
 
+    // Read the field table directly. An entity query on civicrm_event with a
+    // condition on a Drupal-attached field silently returns nothing (the
+    // civicrm_entity storage only translates base-field conditions), which
+    // is why this bypass never fired in practice before 2026-09.
     try {
-      $event_ids = $this->entityTypeManager->getStorage('civicrm_event')
-        ->getQuery()
-        ->accessCheck(FALSE)
-        ->condition('field_civi_event_badges', $badgeTid)
-        ->execute();
+      $event_ids = $this->database->select('civicrm_event__field_civi_event_badges', 'eb')
+        ->fields('eb', ['entity_id'])
+        ->condition('eb.field_civi_event_badges_target_id', $badgeTid)
+        ->condition('eb.deleted', 0)
+        ->execute()
+        ->fetchCol();
     }
     catch (\Throwable $e) {
       // field_civi_event_badges may not exist yet in some environments.
@@ -296,6 +301,7 @@ class BadgePrerequisiteGate {
     if (!$event_ids) {
       return FALSE;
     }
+    $event_ids = array_map('intval', $event_ids);
 
     try {
       $contact_id = (int) $this->database->select('civicrm_uf_match', 'm')
